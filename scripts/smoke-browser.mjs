@@ -12,10 +12,14 @@
  */
 
 import { chromium } from 'playwright-core'
+// Read from the same definition the seed and the login screen use, so a password
+// change that breaks the demo breaks this check too rather than going unnoticed.
+import { DEMO_ACCOUNTS } from '../lib/demo-accounts.ts'
 
 const BASE = process.argv[2] ?? 'http://localhost:3000'
-const EMAIL = process.env.SMOKE_EMAIL ?? 'supervisor@inventory.local'
-const PASSWORD = process.env.SMOKE_PASSWORD ?? 'demo1234'
+const SUPERVISOR = DEMO_ACCOUNTS.find((account) => account.role === 'SUPERVISOR')
+const EMAIL = process.env.SMOKE_EMAIL ?? SUPERVISOR.email
+const PASSWORD = process.env.SMOKE_PASSWORD ?? SUPERVISOR.password
 
 /**
  * Noise that is not a real failure.

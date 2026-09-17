@@ -10,6 +10,7 @@ import {
   UserRole,
 } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { DEMO_ACCOUNTS } from '../lib/demo-accounts'
 
 /**
  * The demo dataset.
@@ -301,27 +302,6 @@ const PRODUCTS: Product[] = [
   },
 ]
 
-const DEMO_USERS = [
-  {
-    email: 'admin@inventory.local',
-    name: 'Priya Admin',
-    role: UserRole.ADMIN,
-    password: 'demo1234',
-  },
-  {
-    email: 'supervisor@inventory.local',
-    name: 'Ravi Supervisor',
-    role: UserRole.SUPERVISOR,
-    password: 'demo1234',
-  },
-  {
-    email: 'operator@inventory.local',
-    name: 'Asha Operator',
-    role: UserRole.USER,
-    password: 'demo1234',
-  },
-]
-
 const REASON_CODES = [
   {
     code: 'COUNT_VAR',
@@ -415,7 +395,7 @@ async function main() {
     })
   }
 
-  for (const demoUser of DEMO_USERS) {
+  for (const demoUser of DEMO_ACCOUNTS) {
     const user = await prisma.user.create({
       data: {
         id: randomUUID(),
