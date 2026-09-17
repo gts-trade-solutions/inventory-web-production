@@ -2,8 +2,16 @@
 
 import { useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { BatchStatus } from '@prisma/client'
+// NOT `import { BatchStatus } from '@prisma/client'`. That is a runtime value
+// import, and pulling the Prisma client into a browser bundle makes webpack
+// resolve the module to undefined — which surfaces as
+// "Cannot read properties of undefined (reading 'call')" in layout-router, with
+// no hint about where it came from. A client component may import Prisma TYPES
+// (erased at compile time) but never its values.
 import { AlertCircle, CheckCircle2, Loader2, ShieldAlert, ShieldCheck } from 'lucide-react'
+
+/** Mirrors the Prisma enum. String values are identical, so they interchange. */
+type BatchStatus = 'ACTIVE' | 'QUARANTINE' | 'EXPIRED' | 'BLOCKED' | 'CONSUMED'
 import { setBatchStatusAction, type BatchActionState } from './actions'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -27,8 +35,8 @@ export function BatchStatusForm({
 }) {
   const [state, formAction] = useActionState<BatchActionState, FormData>(setBatchStatusAction, {})
 
-  const quarantined = status === BatchStatus.QUARANTINE || status === BatchStatus.BLOCKED
-  const nextStatus = quarantined ? BatchStatus.ACTIVE : BatchStatus.QUARANTINE
+  const quarantined = status === 'QUARANTINE' || status === 'BLOCKED'
+  const nextStatus = quarantined ? 'ACTIVE' : 'QUARANTINE'
 
   return (
     <form action={formAction} className="space-y-3">

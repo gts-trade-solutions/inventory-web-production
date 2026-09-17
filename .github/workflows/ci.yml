@@ -95,6 +95,12 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Client/server boundary check
+        # Catches server-only code imported into a client component. Nothing else
+        # in this pipeline does: it typechecks, lints, builds and server-renders
+        # fine, then fails only in a browser.
+        run: npm run check:client
+
       - name: Format check
         run: npm run format:check
 

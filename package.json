@@ -20,7 +20,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
     "db:reset": "prisma migrate reset",
-    "verify": "npm run typecheck && npm run lint && npm test"
+    "verify": "npm run typecheck && npm run lint && npm run check:client && npm test",
+    "check:client": "node scripts/check-client-boundaries.mjs",
+    "smoke": "node scripts/smoke-browser.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -64,6 +66,7 @@
     "dotenv-cli": "^11.0.0",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.0.0",
+    "playwright-core": "^1.63.0",
     "postcss": "^8.4.49",
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.8",
