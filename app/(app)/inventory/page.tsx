@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { TrackingMode } from '@prisma/client'
+import { TrackingMode, UserRole } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
-import { Layers, Package, ScanBarcode } from 'lucide-react'
-import { requireUser } from '@/lib/auth/guards'
+import { Layers, Package, Plus, ScanBarcode } from 'lucide-react'
+import { requireUser, roleAtLeast } from '@/lib/auth/guards'
 import { PageHeader } from '@/components/page-header'
 import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Table,
@@ -85,7 +86,19 @@ export default async function InventoryPage({
     <div className="mx-auto max-w-6xl">
       <PageHeader
         title="Inventory"
-        description={`${rows.length} item${rows.length === 1 ? '' : 's'}${search ? ` matching “${search}”` : ''}`}
+        description={`${rows.length} item${rows.length === 1 ? '' : 's'}${
+          search ? ` matching “${search}”` : ''
+        }`}
+        actions={
+          roleAtLeast(user.role, UserRole.ADMIN) ? (
+            <Button asChild>
+              <Link href="/inventory/new">
+                <Plus />
+                New item
+              </Link>
+            </Button>
+          ) : null
+        }
       />
 
       <form className="mb-4 flex flex-wrap items-center gap-2">

@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { TrackingMode } from '@prisma/client'
-import { ArrowLeft, Plus } from 'lucide-react'
-import { requireUser } from '@/lib/auth/guards'
+import { TrackingMode, UserRole } from '@prisma/client'
+import { ArrowLeft, Pencil, Plus } from 'lucide-react'
+import { requireUser, roleAtLeast } from '@/lib/auth/guards'
 import { itemStock, listBatches } from '@/lib/services/traceability'
 import { PageHeader } from '@/components/page-header'
 import { EmptyState } from '@/components/empty-state'
@@ -110,14 +110,22 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ ite
         title={item.name}
         description={`${item.sku} · ${item.category?.name ?? 'Uncategorised'}`}
         actions={
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            {roleAtLeast(user.role, UserRole.ADMIN) && (
+              <Button asChild variant="outline">
+                <Link href={`/inventory/${item.id}/edit`}>
+                  <Pencil />
+                  Edit
+                </Link>
+              </Button>
+            )}
             <Button asChild>
               <Link href={`/movements/new?item=${item.id}`}>
                 <Plus />
                 Record movement
               </Link>
             </Button>
-            <div className="text-right">
+            <div className="ml-2 text-right">
               <p className="tabular text-2xl font-semibold">{onHand.toLocaleString()}</p>
               <p className="text-xs text-muted-foreground">
                 {item.unit} on hand
