@@ -22,7 +22,8 @@
     "db:reset": "prisma migrate reset",
     "verify": "npm run typecheck && npm run lint && npm run check:client && npm test",
     "check:client": "node scripts/check-client-boundaries.mjs",
-    "smoke": "node --experimental-strip-types scripts/smoke-browser.mjs"
+    "smoke": "node --experimental-strip-types scripts/smoke-browser.mjs",
+    "check:api": "node scripts/check-api.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

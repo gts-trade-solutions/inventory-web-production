@@ -15,8 +15,15 @@ export default middleware
 
 export const config = {
   matcher: [
-    // Everything except Next internals, static files and the auth endpoints
-    // themselves.
-    '/((?!api/auth|_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    /**
+     * Everything except Next internals, static files, and BOTH api trees.
+     *
+     * `/api/v1` is excluded deliberately. It authenticates with a device-bound
+     * bearer token, not a session cookie, and this middleware redirects an
+     * unauthenticated request to /login — so an API call landed on the login
+     * page and came back as 200 with HTML. A client would read that as success.
+     * The API does its own auth in lib/api/handler.ts.
+     */
+    '/((?!api/auth|api/v1|_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }
