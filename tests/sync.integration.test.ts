@@ -35,12 +35,30 @@ const movement = (overrides: Partial<PushMovement> & { type: PushMovement['type'
 })
 
 describe('cursor', () => {
-  it('round-trips', () => {
+  it('round-trips a position for every entity', () => {
     const at = new Date('2026-09-17T10:31:04.512Z')
-    const decoded = decodeCursor(encodeCursor({ at, id: 'abc' }))
+    const cursor = {
+      items: { at, id: 'item-1' },
+      stockLevels: { at: new Date('2026-09-17T10:31:04.999Z'), id: 'a~b~c' },
+    }
 
-    expect(decoded?.at.toISOString()).toBe(at.toISOString())
-    expect(decoded?.id).toBe('abc')
+    const decoded = decodeCursor(encodeCursor(cursor))
+
+    expect(decoded?.items?.at.toISOString()).toBe(at.toISOString())
+    expect(decoded?.items?.id).toBe('item-1')
+    expect(decoded?.stockLevels?.id).toBe('a~b~c')
+    // Entities with no position are absent, not zeroed — an absent position
+    // means "from the beginning", which is what a first sync needs.
+    expect(decoded?.batches).toBeUndefined()
+  })
+
+  it('survives a timestamp with milliseconds intact', () => {
+    // The whole reason timestamps are DATETIME(3): a cursor that cannot express
+    // the value it points at can never advance past it.
+    const at = new Date('2026-09-17T10:31:04.007Z')
+    const decoded = decodeCursor(encodeCursor({ items: { at, id: 'x' } }))
+
+    expect(decoded?.items?.at.getTime()).toBe(at.getTime())
   })
 
   it('rejects anything it did not issue', () => {
@@ -120,6 +138,75 @@ describe('pull', () => {
   it('signals more pages when a batch fills the limit', async () => {
     const result = await pull(prisma, { limit: 1 })
     expect(result.hasMore).toBe(true)
+  })
+
+  it('pages every item through without dropping any', async () => {
+    // The bug this guards: one cursor shared by every entity. Items paged, a
+    // location was stamped later than the page ended, and the shared cursor
+    // jumped to the location's timestamp — stepping straight over the items in
+    // between. Seven of twelve were never sent, and the client reported itself
+    // up to date. Silent, and invisible until a count disagreed.
+    const base = new Date('2026-09-16T08:00:00.000Z')
+    const skus: string[] = []
+
+    for (let i = 0; i < 12; i++) {
+      const id = randomUUID()
+      const sku = `PAGE-${String(i).padStart(2, '0')}`
+      await prisma.item.create({
+        data: { id, sku, name: `Paged ${i}`, unit: 'ea', reorderPoint: 0 },
+      })
+      await prisma.$executeRaw`
+        UPDATE items SET updatedAt = ${new Date(base.getTime() + i * 1000)} WHERE id = ${id}
+      `
+      skus.push(sku)
+    }
+
+    // A location stamped after every one of those items.
+    await prisma.$executeRaw`
+      UPDATE locations SET updatedAt = ${new Date(base.getTime() + 60_000)} WHERE id = ${wh.locationA}
+    `
+
+    const seen = new Set<string>()
+    let since: string | null = null
+
+    for (let page = 0; page < 20; page++) {
+      const result: Awaited<ReturnType<typeof pull>> = await pull(prisma, { since, limit: 5 })
+      for (const item of result.items) seen.add(item.sku)
+      since = result.nextCursor
+      if (!result.hasMore) break
+    }
+
+    for (const sku of skus) expect(seen).toContain(sku)
+  })
+
+  it('stops returning rows once the client has caught up', async () => {
+    // And the other half: a cursor built from a timestamp the client cannot
+    // represent never moves past the newest row, so every pull re-sent the same
+    // tail for ever and no client could ever conclude it was up to date.
+    const first = await pull(prisma, {})
+    expect(first.stockLevels.length + first.items.length).toBeGreaterThan(0)
+
+    const second = await pull(prisma, { since: first.nextCursor })
+
+    expect(second.items).toHaveLength(0)
+    expect(second.locations).toHaveLength(0)
+    expect(second.batches).toHaveLength(0)
+    expect(second.serialUnits).toHaveLength(0)
+    expect(second.stockLevels).toHaveLength(0)
+    expect(second.hasMore).toBe(false)
+
+    // A third pull with the second cursor is still empty — the position held.
+    const third = await pull(prisma, { since: second.nextCursor })
+    expect(third.items).toHaveLength(0)
+    expect(third.stockLevels).toHaveLength(0)
+  })
+
+  it('refuses a cursor issued by an older version', async () => {
+    // The old format encoded one global position. Honouring it would place the
+    // client at a position that no longer means what it meant.
+    const legacy = Buffer.from('2026-09-16T08:00:00.000Z|sync').toString('base64url')
+
+    expect(() => decodeCursor(legacy)).toThrow(/cursor/i)
   })
 })
 
@@ -216,7 +303,7 @@ describe('push', () => {
     const units = await seedSerialUnits(wh.drillId, wh.locationA, 2)
     await prisma.$executeRaw`
       INSERT INTO stock_levels (itemId, locationId, batchId, quantity, updatedAt)
-      VALUES (${wh.drillId}, ${wh.locationA}, '00000000-0000-0000-0000-000000000000', 2, NOW(6))
+      VALUES (${wh.drillId}, ${wh.locationA}, '00000000-0000-0000-0000-000000000000', 2, NOW(3))
     `
 
     const { results } = await push(
@@ -242,7 +329,7 @@ describe('push', () => {
     const units = await seedSerialUnits(wh.drillId, wh.locationA, 1)
     await prisma.$executeRaw`
       INSERT INTO stock_levels (itemId, locationId, batchId, quantity, updatedAt)
-      VALUES (${wh.drillId}, ${wh.locationA}, '00000000-0000-0000-0000-000000000000', 1, NOW(6))
+      VALUES (${wh.drillId}, ${wh.locationA}, '00000000-0000-0000-0000-000000000000', 1, NOW(3))
     `
 
     const issue = () =>

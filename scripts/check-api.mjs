@@ -89,10 +89,16 @@ let cursor
     body.stockLevels?.some((l) => l.batchId === null),
   )
 
+  // Every entity, not just items. Checking items alone is what let a cursor bug
+  // hide: stock levels came back on every single pull, for ever, and no
+  // assertion here ever looked at them.
   const again = await call(`/sync/pull?since=${encodeURIComponent(cursor)}`, {
     headers: auth(accessToken),
   })
-  log('second pull returns nothing new', again.body.items?.length === 0)
+  const entities = ['items', 'locations', 'batches', 'serialUnits', 'stockLevels', 'reasonCodes']
+  const stillSending = entities.filter((entity) => (again.body[entity]?.length ?? 0) > 0)
+  log('second pull returns nothing new', stillSending.length === 0 || stillSending.join(', '))
+  log('  and does not claim more pages', again.body.hasMore === false)
 
   const bogus = await call('/sync/pull?since=garbage', { headers: auth(accessToken) })
   log('invented cursor refused', `${bogus.status} ${bogus.body?.error?.code}`)
@@ -207,6 +213,34 @@ console.log('\n=== device heartbeat ===')
   log('POST /devices/heartbeat', beat.status)
   log('  device recognised', beat.body?.deviceId === DEVICE_ID)
   log('  pending reported back', beat.body?.pendingCount)
+}
+
+console.log('\n=== registers ===')
+{
+  const batches = await call('/batches', { headers: auth(accessToken) })
+  log('GET /batches', batches.status)
+  log('  batches', batches.body?.batches?.length)
+  log('  expiry summary present', Boolean(batches.body?.summary?.expired))
+  log('  on hand computed server-side', typeof batches.body?.batches?.[0]?.onHand === 'number')
+
+  const expired = await call('/batches?expiry=EXPIRED', { headers: auth(accessToken) })
+  log('filtered to expired', expired.body?.batches?.every((b) => b.expiryState === 'EXPIRED'))
+
+  const units = await call('/serials?limit=5', { headers: auth(accessToken) })
+  log('GET /serials?limit=5', `${units.status} ${units.body?.units?.length} unit(s)`)
+
+  // An EPC must match exactly — a partial match resolving to the wrong unit is
+  // worse than no match at all.
+  const tagged = units.body?.units?.find((u) => u.epc)
+  if (tagged) {
+    const byTag = await call(`/serials?q=${tagged.epc}`, { headers: auth(accessToken) })
+    log('scanned tag resolves to one unit', byTag.body?.units?.length === 1)
+    log('  and it is the right one', byTag.body?.units?.[0]?.id === tagged.id)
+
+    const wrongTag = `${tagged.epc.slice(0, 22)}${tagged.epc.slice(22) === 'FF' ? 'EE' : 'FF'}`
+    const miss = await call(`/serials?q=${wrongTag}`, { headers: auth(accessToken) })
+    log('a tag we do not hold matches nothing', miss.body?.units?.length === 0)
+  }
 }
 
 console.log('\n=== traceability ===')

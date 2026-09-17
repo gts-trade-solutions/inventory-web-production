@@ -145,9 +145,9 @@ model Site {
   name   String  @db.VarChar(120)
   active Boolean @default(true)
 
-  createdAt DateTime  @default(now()) @db.DateTime(6)
-  updatedAt DateTime  @updatedAt @db.DateTime(6)
-  deletedAt DateTime? @db.DateTime(6)
+  createdAt DateTime  @default(now()) @db.DateTime(3)
+  updatedAt DateTime  @updatedAt @db.DateTime(3)
+  deletedAt DateTime? @db.DateTime(3)
 
   locations     Location[]
   movements     Movement[]
@@ -164,9 +164,9 @@ model Category {
   parentId String? @db.Char(36)
   active   Boolean @default(true)
 
-  createdAt DateTime  @default(now()) @db.DateTime(6)
-  updatedAt DateTime  @updatedAt @db.DateTime(6)
-  deletedAt DateTime? @db.DateTime(6)
+  createdAt DateTime  @default(now()) @db.DateTime(3)
+  updatedAt DateTime  @updatedAt @db.DateTime(3)
+  deletedAt DateTime? @db.DateTime(3)
 
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
   children Category[] @relation("CategoryTree")
@@ -203,10 +203,10 @@ model Item {
 
   active Boolean @default(true)
 
-  createdAt DateTime  @default(now()) @db.DateTime(6)
+  createdAt DateTime  @default(now()) @db.DateTime(3)
   /// Drives the mobile sync pull cursor (API_CONTRACT §2).
-  updatedAt DateTime  @updatedAt @db.DateTime(6)
-  deletedAt DateTime? @db.DateTime(6)
+  updatedAt DateTime  @updatedAt @db.DateTime(3)
+  deletedAt DateTime? @db.DateTime(3)
 
   category    Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   barcodes    ItemBarcode[]
@@ -235,8 +235,8 @@ model ItemBarcode {
   packSize  Int         @default(1)
   isPrimary Boolean     @default(false)
 
-  createdAt DateTime @default(now()) @db.DateTime(6)
-  updatedAt DateTime @updatedAt @db.DateTime(6)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
 
   item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
@@ -253,9 +253,9 @@ model Location {
   zone   LocationZone @default(STORAGE)
   active Boolean      @default(true)
 
-  createdAt DateTime  @default(now()) @db.DateTime(6)
-  updatedAt DateTime  @updatedAt @db.DateTime(6)
-  deletedAt DateTime? @db.DateTime(6)
+  createdAt DateTime  @default(now()) @db.DateTime(3)
+  updatedAt DateTime  @updatedAt @db.DateTime(3)
+  deletedAt DateTime? @db.DateTime(3)
 
   site          Site           @relation(fields: [siteId], references: [id], onDelete: Restrict)
   movementsFrom Movement[]     @relation("MovementFrom")
@@ -287,9 +287,9 @@ model Batch {
   status      BatchStatus @default(ACTIVE)
   notes       String?     @db.Text
 
-  receivedAt DateTime @default(now()) @db.DateTime(6)
-  createdAt  DateTime @default(now()) @db.DateTime(6)
-  updatedAt  DateTime @updatedAt @db.DateTime(6)
+  receivedAt DateTime @default(now()) @db.DateTime(3)
+  createdAt  DateTime @default(now()) @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @db.DateTime(3)
 
   item        Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
   serialUnits SerialUnit[]
@@ -321,11 +321,11 @@ model SerialUnit {
   locationId String?    @db.Char(36)
 
   warrantyUntil DateTime? @db.Date
-  receivedAt    DateTime  @default(now()) @db.DateTime(6)
-  issuedAt      DateTime? @db.DateTime(6)
+  receivedAt    DateTime  @default(now()) @db.DateTime(3)
+  issuedAt      DateTime? @db.DateTime(3)
 
-  createdAt DateTime @default(now()) @db.DateTime(6)
-  updatedAt DateTime @updatedAt @db.DateTime(6)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
 
   item      Item             @relation(fields: [itemId], references: [id], onDelete: Restrict)
   batch     Batch?           @relation(fields: [batchId], references: [id], onDelete: Restrict)
@@ -378,9 +378,9 @@ model Movement {
   reference String? @db.VarChar(120)
 
   /// Client clock — recorded for the operator's timeline, never trusted.
-  occurredAt DateTime @db.DateTime(6)
+  occurredAt DateTime @db.DateTime(3)
   /// Server clock — what ordering and sync cursors use (API_CONTRACT §9).
-  recordedAt DateTime @default(now()) @db.DateTime(6)
+  recordedAt DateTime @default(now()) @db.DateTime(3)
 
   userId         String?        @db.Char(36)
   deviceId       String?        @db.Char(36)
@@ -442,7 +442,7 @@ model StockLevel {
   /// flagged for a supervisor rather than rejected (WADR-007).
   quantity Int
 
-  updatedAt DateTime @updatedAt @db.DateTime(6)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
 
   item     Item     @relation(fields: [itemId], references: [id], onDelete: Restrict)
   location Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
@@ -469,14 +469,14 @@ model CountSession {
   status     CountStatus @default(COUNTING)
 
   startedById  String    @db.Char(36)
-  startedAt    DateTime  @default(now()) @db.DateTime(6)
-  submittedAt  DateTime? @db.DateTime(6)
+  startedAt    DateTime  @default(now()) @db.DateTime(3)
+  submittedAt  DateTime? @db.DateTime(3)
   approvedById String?   @db.Char(36)
-  approvedAt   DateTime? @db.DateTime(6)
+  approvedAt   DateTime? @db.DateTime(3)
   rejectedNote String?   @db.Text
 
-  createdAt DateTime @default(now()) @db.DateTime(6)
-  updatedAt DateTime @updatedAt @db.DateTime(6)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
 
   site       Site       @relation(fields: [siteId], references: [id], onDelete: Restrict)
   location   Location   @relation(fields: [locationId], references: [id], onDelete: Restrict)
@@ -526,7 +526,7 @@ model CountTag {
   itemId       String? @db.Char(36)
 
   rssi   Int?
-  readAt DateTime @db.DateTime(6)
+  readAt DateTime @db.DateTime(3)
 
   session    CountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   serialUnit SerialUnit?  @relation(fields: [serialUnitId], references: [id], onDelete: SetNull)
@@ -550,10 +550,10 @@ model User {
 
   defaultSiteId String? @db.Char(36)
 
-  lastLoginAt DateTime? @db.DateTime(6)
-  createdAt   DateTime  @default(now()) @db.DateTime(6)
-  updatedAt   DateTime  @updatedAt @db.DateTime(6)
-  deletedAt   DateTime? @db.DateTime(6)
+  lastLoginAt DateTime? @db.DateTime(3)
+  createdAt   DateTime  @default(now()) @db.DateTime(3)
+  updatedAt   DateTime  @updatedAt @db.DateTime(3)
+  deletedAt   DateTime? @db.DateTime(3)
 
   sites           UserSite[]
   movements       Movement[]
@@ -591,10 +591,10 @@ model RefreshToken {
   userId   String  @db.Char(36)
   deviceId String? @db.Char(36)
 
-  expiresAt    DateTime  @db.DateTime(6)
-  revokedAt    DateTime? @db.DateTime(6)
+  expiresAt    DateTime  @db.DateTime(3)
+  revokedAt    DateTime? @db.DateTime(3)
   replacedById String?   @db.Char(36)
-  createdAt    DateTime  @default(now()) @db.DateTime(6)
+  createdAt    DateTime  @default(now()) @db.DateTime(3)
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
@@ -627,13 +627,13 @@ model Device {
   siteId         String? @db.Char(36)
   assignedUserId String? @db.Char(36)
 
-  lastSeenAt DateTime? @db.DateTime(6)
+  lastSeenAt DateTime? @db.DateTime(3)
   appVersion String?   @db.VarChar(40)
   firmware   String?   @db.VarChar(60)
   active     Boolean   @default(true)
 
-  createdAt DateTime @default(now()) @db.DateTime(6)
-  updatedAt DateTime @updatedAt @db.DateTime(6)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
 
   site          Site?            @relation(fields: [siteId], references: [id], onDelete: SetNull)
   assignedUser  User?            @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
@@ -664,8 +664,8 @@ model LabelTemplate {
 
   active Boolean @default(true)
 
-  createdAt DateTime @default(now()) @db.DateTime(6)
-  updatedAt DateTime @updatedAt @db.DateTime(6)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
 
   printJobs PrintJob[]
 
@@ -697,8 +697,8 @@ model PrintJob {
   epc          String? @db.Char(24)
 
   userId    String?   @db.Char(36)
-  createdAt DateTime  @default(now()) @db.DateTime(6)
-  sentAt    DateTime? @db.DateTime(6)
+  createdAt DateTime  @default(now()) @db.DateTime(3)
+  sentAt    DateTime? @db.DateTime(3)
 
   template      LabelTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
   printerDevice Device?       @relation(fields: [printerDeviceId], references: [id], onDelete: SetNull)
@@ -727,8 +727,8 @@ model EpcSerialBlock {
   /// Highest serial the device reports as consumed; advisory, not a constraint.
   consumedTo BigInt?
 
-  allocatedAt DateTime  @default(now()) @db.DateTime(6)
-  expiresAt   DateTime? @db.DateTime(6)
+  allocatedAt DateTime  @default(now()) @db.DateTime(3)
+  expiresAt   DateTime? @db.DateTime(3)
 
   item   Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
   device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
@@ -752,8 +752,8 @@ model ReasonCode {
   requiresNote Boolean  @default(false)
   active    Boolean     @default(true)
 
-  createdAt DateTime @default(now()) @db.DateTime(6)
-  updatedAt DateTime @updatedAt @db.DateTime(6)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
 
   movements Movement[]
 
@@ -775,7 +775,7 @@ model NumberSequence {
   /// Zero-padding width: 6 gives RCV-2026-000123.
   padding   Int    @default(6)
 
-  updatedAt DateTime @updatedAt @db.DateTime(6)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
 
   @@id([key, period])
   @@map("number_sequences")
@@ -796,7 +796,7 @@ model AuditLog {
 
   ip        String?  @db.VarChar(64)
   userAgent String?  @db.VarChar(255)
-  at        DateTime @default(now()) @db.DateTime(6)
+  at        DateTime @default(now()) @db.DateTime(3)
 
   actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
 
@@ -815,9 +815,9 @@ model ApiClient {
   scopes     String  @db.VarChar(255)
   active     Boolean @default(true)
 
-  lastUsedAt DateTime? @db.DateTime(6)
-  createdAt  DateTime  @default(now()) @db.DateTime(6)
-  updatedAt  DateTime  @updatedAt @db.DateTime(6)
+  lastUsedAt DateTime? @db.DateTime(3)
+  createdAt  DateTime  @default(now()) @db.DateTime(3)
+  updatedAt  DateTime  @updatedAt @db.DateTime(3)
 
   @@map("api_clients")
 }
@@ -831,7 +831,7 @@ model Setting {
 
   value Json
 
-  updatedAt DateTime @updatedAt @db.DateTime(6)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
 
   @@id([key, siteId])
   @@map("settings")

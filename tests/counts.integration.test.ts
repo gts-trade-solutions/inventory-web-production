@@ -312,7 +312,7 @@ describe('RFID tag reads', () => {
     const epcs = await seedTaggedUnits(3)
     await prisma.$executeRaw`
       INSERT INTO stock_levels (itemId, locationId, batchId, quantity, updatedAt)
-      VALUES (${wh.drillId}, ${wh.locationA}, '00000000-0000-0000-0000-000000000000', 5, NOW(6))
+      VALUES (${wh.drillId}, ${wh.locationA}, '00000000-0000-0000-0000-000000000000', 5, NOW(3))
     `
     const { sessionId } = await startAt()
     await recordTagReads(

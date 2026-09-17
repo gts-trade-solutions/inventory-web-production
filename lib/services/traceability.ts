@@ -1,7 +1,8 @@
 import 'server-only'
 import { BatchStatus, TrackingMode } from '@prisma/client'
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient, SerialStatus } from '@prisma/client'
 import { NO_BATCH, fromBatchKey } from '@/lib/domain/types'
+import { isEpc } from '@/lib/domain/sgtin96'
 
 /**
  * Reads for the traceability screens.
@@ -363,6 +364,91 @@ export async function traceSerialUnit(
       note: movement.note,
     })),
   }
+}
+
+export interface SerialUnitRow {
+  id: string
+  serialNo: string
+  epc: string | null
+  status: SerialStatus
+  itemId: string
+  itemSku: string
+  itemName: string
+  batchId: string | null
+  batchNo: string | null
+  location: string | null
+}
+
+export interface SerialUnitFilter {
+  itemId?: string
+  batchId?: string
+  status?: SerialStatus
+  /** A serial number, item, batch — or a scanned EPC, which is matched exactly. */
+  search?: string
+  limit?: number
+}
+
+const SERIAL_PAGE_SIZE = 100
+
+/**
+ * The serial unit register.
+ *
+ * Search accepts a scanned RFID tag as readily as a typed serial number: an
+ * operator holding a reader has the EPC, not the serial, and making them
+ * translate it by hand wastes the point of tagging the unit. An EPC is matched
+ * exactly rather than by substring — a partial EPC match is never a real hit,
+ * and one that resolved to the wrong unit would be worse than no hit at all.
+ */
+export async function listSerialUnits(
+  db: PrismaClient,
+  filter: SerialUnitFilter = {},
+): Promise<SerialUnitRow[]> {
+  const search = filter.search?.trim() ?? ''
+
+  const units = await db.serialUnit.findMany({
+    where: {
+      ...(filter.itemId ? { itemId: filter.itemId } : {}),
+      ...(filter.batchId ? { batchId: filter.batchId } : {}),
+      ...(filter.status ? { status: filter.status } : {}),
+      ...(search
+        ? isEpc(search)
+          ? { epc: search.toUpperCase() }
+          : {
+              OR: [
+                { serialNo: { contains: search } },
+                { item: { name: { contains: search } } },
+                { item: { sku: { contains: search } } },
+                { batch: { batchNo: { contains: search } } },
+              ],
+            }
+        : {}),
+    },
+    select: {
+      id: true,
+      serialNo: true,
+      epc: true,
+      status: true,
+      itemId: true,
+      item: { select: { sku: true, name: true } },
+      batch: { select: { id: true, batchNo: true } },
+      location: { select: { code: true } },
+    },
+    orderBy: [{ item: { sku: 'asc' } }, { serialNo: 'asc' }],
+    take: Math.min(Math.max(filter.limit ?? SERIAL_PAGE_SIZE, 1), 500),
+  })
+
+  return units.map((unit) => ({
+    id: unit.id,
+    serialNo: unit.serialNo,
+    epc: unit.epc,
+    status: unit.status,
+    itemId: unit.itemId,
+    itemSku: unit.item.sku,
+    itemName: unit.item.name,
+    batchId: unit.batch?.id ?? null,
+    batchNo: unit.batch?.batchNo ?? null,
+    location: unit.location?.code ?? null,
+  }))
 }
 
 /** Resolves a scanned RFID tag straight to its unit. */

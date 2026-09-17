@@ -120,6 +120,17 @@ Access token 15 minutes, refresh token 30 days.
 `since` is omitted on a first full sync. The cursor is an **opaque server-issued string**: the client stores and
 returns it verbatim, and must never construct or parse one.
 
+Internally it carries a separate position per entity, each a `(updatedAt, id)` keyset. Clients do not need to
+know that, but two consequences are visible:
+
+- **`limit` applies per entity, not to the response as a whole.** A page may return 500 items and 3 locations.
+- **A cursor the server no longer recognises is refused with `INVALID_CURSOR`**, not silently reinterpreted.
+  The client resyncs from the start. This is what happens to cursors issued before the keyset format.
+
+Why per entity: one shared position advances to the newest row across every entity, so whenever one entity
+pages and another has newer rows, the rest of the paging entity's rows fall behind the cursor and are never
+sent again — a first sync that drops items while reporting itself complete.
+
 ```json
 {
   "items": [
@@ -210,7 +221,8 @@ returns it verbatim, and must never construct or parse one.
 }
 ```
 
-- `hasMore: true` means call again immediately with `nextCursor`; the client is still catching up.
+- `hasMore: true` means call again immediately with `nextCursor`; the client is still catching up. It is true
+  when **any** entity filled its page, so keep calling until it is false rather than until a page looks empty.
 - `tombstones` cover soft-deleted and deactivated master data, so a client drops them locally.
 - `stockLevels` is the server's projection. A client with unsynced movements applies its own on top —
   **the server value is not authoritative until the outbox is empty**, or stock appears to jump backwards.

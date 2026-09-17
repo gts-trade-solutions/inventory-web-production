@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { SerialStatus } from '@prisma/client'
-import type { Prisma } from '@prisma/client'
 import { Radio } from 'lucide-react'
 import { requireUser } from '@/lib/auth/guards'
 import { isEpc } from '@/lib/domain/sgtin96'
+import { listSerialUnits } from '@/lib/services/traceability'
 import { PageHeader } from '@/components/page-header'
 import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
@@ -41,37 +41,10 @@ export default async function SerialsPage({
   const status = parseStatus(params.status)
   const searchIsEpc = isEpc(search)
 
-  const where: Prisma.SerialUnitWhereInput = {
-    ...(status ? { status } : {}),
-    ...(search
-      ? searchIsEpc
-        ? { epc: search.toUpperCase() }
-        : {
-            OR: [
-              { serialNo: { contains: search } },
-              { item: { name: { contains: search } } },
-              { item: { sku: { contains: search } } },
-              { batch: { batchNo: { contains: search } } },
-            ],
-          }
-      : {}),
-  }
-
-  const units = await user.db.serialUnit.findMany({
-    where,
-    select: {
-      id: true,
-      serialNo: true,
-      epc: true,
-      status: true,
-      itemId: true,
-      item: { select: { sku: true, name: true } },
-      batch: { select: { id: true, batchNo: true } },
-      location: { select: { code: true } },
-    },
-    orderBy: [{ item: { sku: 'asc' } }, { serialNo: 'asc' }],
-    take: PAGE_SIZE,
-  })
+  // Same service the mobile API calls, so a search that finds a unit on the
+  // phone finds the same unit here. Two implementations of "matches" would drift
+  // the first time either one is tuned.
+  const units = await listSerialUnits(user.db, { status, search, limit: PAGE_SIZE })
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -148,16 +121,16 @@ export default async function SerialsPage({
                   </TableCell>
                   <TableCell>
                     <Link href={`/inventory/${unit.itemId}`} className="hover:underline">
-                      {unit.item.name}
+                      {unit.itemName}
                     </Link>
                     <span className="tabular block text-xs text-muted-foreground">
-                      {unit.item.sku}
+                      {unit.itemSku}
                     </span>
                   </TableCell>
                   <TableCell className="tabular">
-                    {unit.batch ? (
-                      <Link href={`/batches/${unit.batch.id}`} className="hover:underline">
-                        {unit.batch.batchNo}
+                    {unit.batchId ? (
+                      <Link href={`/batches/${unit.batchId}`} className="hover:underline">
+                        {unit.batchNo}
                       </Link>
                     ) : (
                       <span className="text-muted-foreground">—</span>
@@ -168,7 +141,7 @@ export default async function SerialsPage({
                       {unit.status.replace('_', ' ')}
                     </Badge>
                   </TableCell>
-                  <TableCell className="tabular">{unit.location?.code ?? '—'}</TableCell>
+                  <TableCell className="tabular">{unit.location ?? '—'}</TableCell>
                   <TableCell className="tabular text-xs text-muted-foreground">
                     {unit.epc ?? 'Not tagged'}
                   </TableCell>

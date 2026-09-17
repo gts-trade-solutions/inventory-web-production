@@ -20,37 +20,171 @@ import { recordMovement } from './movements'
 /**
  * An opaque, server-issued cursor.
  *
- * Encodes the server's `recordedAt` plus a tiebreaker id. Opaque because the
- * client must never construct one from its own clock: device clocks drift, and a
- * cursor built from a fast clock silently skips every change in the gap. That is
- * data loss with no error and no symptom until a count disagrees.
+ * Opaque because the client must never construct one from its own clock: device
+ * clocks drift, and a cursor built from a fast clock silently skips every change
+ * in the gap. That is data loss with no error and no symptom until a count
+ * disagrees.
+ *
+ * It holds a position PER ENTITY, not one position for the whole sync. A single
+ * shared position is wrong whenever one entity pages and another does not: the
+ * cursor advances to the newest row across all of them, and the rest of the
+ * paging entity's rows fall behind it and are never sent again. That is not
+ * theoretical — with a 500-row limit and 600 changed items, a first sync
+ * silently dropped a hundred items while reporting itself complete.
+ *
+ * Each position is a keyset: `(updatedAt, id)`. The id breaks ties so rows
+ * written in the same millisecond are neither repeated forever nor skipped —
+ * which is also why every timestamp column is DATETIME(3). MySQL will happily
+ * store microseconds that JavaScript's Date cannot represent, and a cursor that
+ * cannot express the value it is pointing at can never move past it.
  */
-export interface Cursor {
+export interface EntityPosition {
   at: Date
   id: string
 }
 
+export type Cursor = Partial<Record<SyncEntity, EntityPosition>>
+
+export type SyncEntity =
+  | 'items'
+  | 'locations'
+  | 'batches'
+  | 'serialUnits'
+  | 'stockLevels'
+  | 'reasonCodes'
+  | 'labelTemplates'
+
+const SYNC_ENTITIES: SyncEntity[] = [
+  'items',
+  'locations',
+  'batches',
+  'serialUnits',
+  'stockLevels',
+  'reasonCodes',
+  'labelTemplates',
+]
+
+const CURSOR_VERSION = 'v2'
+
 export function encodeCursor(cursor: Cursor): string {
-  return Buffer.from(`${cursor.at.toISOString()}|${cursor.id}`).toString('base64url')
+  const parts = SYNC_ENTITIES.filter((entity) => cursor[entity]).map((entity) => {
+    const position = cursor[entity]!
+    return `${entity}:${position.at.toISOString()}:${position.id}`
+  })
+
+  return Buffer.from([CURSOR_VERSION, ...parts].join('|')).toString('base64url')
 }
 
 export function decodeCursor(value: string | null | undefined): Cursor | null {
   if (!value) return null
 
   try {
-    const [at, id] = Buffer.from(value, 'base64url').toString('utf8').split('|')
-    if (!at || !id) throw new Error('malformed')
+    const [version, ...parts] = Buffer.from(value, 'base64url').toString('utf8').split('|')
+    // A cursor from an older server encodes a position we can no longer place.
+    // Refusing it costs one full resync; guessing costs rows nobody notices.
+    if (version !== CURSOR_VERSION) throw new Error('unknown cursor version')
 
-    const date = new Date(at)
-    if (Number.isNaN(date.getTime())) throw new Error('bad date')
+    const cursor: Cursor = {}
+    for (const part of parts) {
+      const separator = part.indexOf(':')
+      const entity = part.slice(0, separator) as SyncEntity
+      if (!SYNC_ENTITIES.includes(entity)) throw new Error('unknown entity')
 
-    return { at: date, id }
+      const rest = part.slice(separator + 1)
+      const split = rest.lastIndexOf(':')
+      const at = new Date(rest.slice(0, split))
+      const id = rest.slice(split + 1)
+      if (Number.isNaN(at.getTime()) || !id) throw new Error('malformed position')
+
+      cursor[entity] = { at, id }
+    }
+
+    return cursor
   } catch {
     throw new ApiError(
       ErrorCode.INVALID_CURSOR,
       'That cursor is not one we issued. Omit it to resynchronise from the start.',
     )
   }
+}
+
+/**
+ * The keyset predicate: everything strictly after this position.
+ *
+ * `updatedAt > at OR (updatedAt = at AND id > id)` — the standard form, and the
+ * only one that neither repeats the boundary row forever nor steps over rows
+ * that share its timestamp.
+ */
+function after(position: EntityPosition | undefined) {
+  if (!position) return {}
+
+  return {
+    OR: [
+      { updatedAt: { gt: position.at } },
+      { updatedAt: position.at, id: { gt: position.id } },
+    ],
+  }
+}
+
+/** The position of the last row in a page, or the position we came in with. */
+function positionOf<T extends { id: string; updatedAt: Date }>(
+  rows: readonly T[],
+  previous: EntityPosition | undefined,
+): EntityPosition | undefined {
+  const last = rows[rows.length - 1]
+  return last ? { at: last.updatedAt, id: last.id } : previous
+}
+
+// ---------------------------------------------------------------------------
+// Stock levels have no id — their key is (item, location, batch)
+// ---------------------------------------------------------------------------
+
+interface StockLevelKey {
+  itemId: string
+  locationId: string
+  batchId: string
+  updatedAt: Date
+}
+
+const STOCK_KEY_SEPARATOR = '~'
+
+function stockLevelId(row: Pick<StockLevelKey, 'itemId' | 'locationId' | 'batchId'>): string {
+  return [row.itemId, row.locationId, row.batchId].join(STOCK_KEY_SEPARATOR)
+}
+
+/**
+ * The same keyset predicate, over a three-part key.
+ *
+ * Written out lexicographically rather than with a row-value comparison, which
+ * Prisma cannot express: equal on the parts before, greater on the part here.
+ */
+function afterStockLevel(position: EntityPosition | undefined) {
+  if (!position) return {}
+
+  const [itemId, locationId, batchId] = position.id.split(STOCK_KEY_SEPARATOR)
+  if (!itemId || !locationId || !batchId) {
+    // A key we cannot parse would silently filter to nothing, which reads as
+    // "up to date" on the phone. Resending from this timestamp costs a few
+    // duplicate rows the client upserts away.
+    return { updatedAt: { gte: position.at } }
+  }
+
+  return {
+    OR: [
+      { updatedAt: { gt: position.at } },
+      { updatedAt: position.at, itemId: { gt: itemId } },
+      { updatedAt: position.at, itemId, locationId: { gt: locationId } },
+      { updatedAt: position.at, itemId, locationId, batchId: { gt: batchId } },
+    ],
+  }
+}
+
+function positionOfStockLevel(
+  rows: readonly StockLevelKey[],
+  previous: EntityPosition | undefined,
+): EntityPosition | undefined {
+  const last = rows[rows.length - 1]
+  return last ? { at: last.updatedAt, id: stockLevelId(last) } : previous
 }
 
 // ---------------------------------------------------------------------------
@@ -67,16 +201,13 @@ const DEFAULT_LIMIT = 500
 const MAX_LIMIT = 2000
 
 export async function pull(db: PrismaClient, options: PullOptions) {
-  const cursor = decodeCursor(options.since)
+  const cursor = decodeCursor(options.since) ?? {}
   const limit = Math.min(Math.max(options.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
-  const changedSince = cursor?.at
-
-  const where = changedSince ? { updatedAt: { gt: changedSince } } : {}
 
   const [items, locations, batches, serialUnits, reasonCodes, templates, settings] =
     await Promise.all([
       db.item.findMany({
-        where,
+        where: after(cursor.items),
         select: {
           id: true,
           sku: true,
@@ -95,12 +226,12 @@ export async function pull(db: PrismaClient, options: PullOptions) {
             select: { barcode: true, type: true, packSize: true, isPrimary: true },
           },
         },
-        orderBy: { updatedAt: 'asc' },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
         take: limit,
       }),
 
       db.location.findMany({
-        where: { ...where, ...(options.siteId ? { siteId: options.siteId } : {}) },
+        where: { ...after(cursor.locations), ...(options.siteId ? { siteId: options.siteId } : {}) },
         select: {
           id: true,
           code: true,
@@ -110,12 +241,12 @@ export async function pull(db: PrismaClient, options: PullOptions) {
           deletedAt: true,
           updatedAt: true,
         },
-        orderBy: { updatedAt: 'asc' },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
         take: limit,
       }),
 
       db.batch.findMany({
-        where,
+        where: after(cursor.batches),
         select: {
           id: true,
           itemId: true,
@@ -126,14 +257,14 @@ export async function pull(db: PrismaClient, options: PullOptions) {
           status: true,
           updatedAt: true,
         },
-        orderBy: { updatedAt: 'asc' },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
         take: limit,
       }),
 
       // The largest payload in the system. A client may skip it and fetch units
       // per item on demand instead (API_CONTRACT §2).
       db.serialUnit.findMany({
-        where,
+        where: after(cursor.serialUnits),
         select: {
           id: true,
           itemId: true,
@@ -144,12 +275,12 @@ export async function pull(db: PrismaClient, options: PullOptions) {
           locationId: true,
           updatedAt: true,
         },
-        orderBy: { updatedAt: 'asc' },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
         take: limit,
       }),
 
       db.reasonCode.findMany({
-        where,
+        where: after(cursor.reasonCodes),
         select: {
           id: true,
           code: true,
@@ -159,11 +290,12 @@ export async function pull(db: PrismaClient, options: PullOptions) {
           active: true,
           updatedAt: true,
         },
-        orderBy: { updatedAt: 'asc' },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: limit,
       }),
 
       db.labelTemplate.findMany({
-        where: { ...where, active: true },
+        where: { ...after(cursor.labelTemplates), active: true },
         select: {
           id: true,
           name: true,
@@ -175,7 +307,8 @@ export async function pull(db: PrismaClient, options: PullOptions) {
           rfidEncode: true,
           updatedAt: true,
         },
-        orderBy: { updatedAt: 'asc' },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: limit,
       }),
 
       db.setting.findMany({ select: { key: true, siteId: true, value: true } }),
@@ -184,26 +317,41 @@ export async function pull(db: PrismaClient, options: PullOptions) {
   // Stock is sent as the server's projection. A client with unsynced movements
   // applies its own on top — the server value is not authoritative until the
   // outbox is empty, or stock appears to jump backwards on the phone.
+  //
+  // Keyed by (item, location, batch) rather than an id, so its keyset is that
+  // triple compared lexicographically after the timestamp.
   const stockLevels = await db.stockLevel.findMany({
-    where: changedSince ? { updatedAt: { gt: changedSince } } : {},
+    where: afterStockLevel(cursor.stockLevels),
     select: { itemId: true, locationId: true, batchId: true, quantity: true, updatedAt: true },
-    orderBy: { updatedAt: 'asc' },
+    orderBy: [
+      { updatedAt: 'asc' },
+      { itemId: 'asc' },
+      { locationId: 'asc' },
+      { batchId: 'asc' },
+    ],
     take: limit,
   })
 
-  const newest = [
-    ...items.map((r) => r.updatedAt),
-    ...locations.map((r) => r.updatedAt),
-    ...batches.map((r) => r.updatedAt),
-    ...serialUnits.map((r) => r.updatedAt),
-    ...stockLevels.map((r) => r.updatedAt),
-  ].reduce<Date | null>((max, at) => (!max || at > max ? at : max), null)
+  // Each entity carries its own position forward. An entity that returned a full
+  // page resumes exactly where it stopped; one that returned nothing keeps the
+  // position it came in with rather than being dragged forward by the others.
+  const nextCursor = encodeCursor({
+    items: positionOf(items, cursor.items),
+    locations: positionOf(locations, cursor.locations),
+    batches: positionOf(batches, cursor.batches),
+    serialUnits: positionOf(serialUnits, cursor.serialUnits),
+    reasonCodes: positionOf(reasonCodes, cursor.reasonCodes),
+    labelTemplates: positionOf(templates, cursor.labelTemplates),
+    stockLevels: positionOfStockLevel(stockLevels, cursor.stockLevels),
+  })
 
   const hasMore =
     items.length === limit ||
     locations.length === limit ||
     batches.length === limit ||
     serialUnits.length === limit ||
+    reasonCodes.length === limit ||
+    templates.length === limit ||
     stockLevels.length === limit
 
   return {
@@ -254,7 +402,7 @@ export async function pull(db: PrismaClient, options: PullOptions) {
         .map((location) => ({ entity: 'LOCATION', id: location.id })),
     ],
 
-    nextCursor: newest ? encodeCursor({ at: newest, id: 'sync' }) : (options.since ?? null),
+    nextCursor,
     hasMore,
   }
 }

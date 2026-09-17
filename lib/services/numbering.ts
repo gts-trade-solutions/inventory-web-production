@@ -78,7 +78,7 @@ export async function allocateDocNo(db: Db, key: DocKey, now: Date = new Date())
   // taking a single exclusive lock.
   let updated = await db.$executeRaw`
     UPDATE number_sequences
-       SET nextValue = nextValue + 1, updatedAt = NOW(6)
+       SET nextValue = nextValue + 1, updatedAt = NOW(3)
      WHERE \`key\` = ${key} AND period = ${period}
   `
 
@@ -88,12 +88,12 @@ export async function allocateDocNo(db: Db, key: DocKey, now: Date = new Date())
     // loses simply proceeds to the UPDATE below.
     await db.$executeRaw`
       INSERT IGNORE INTO number_sequences (\`key\`, period, prefix, nextValue, padding, updatedAt)
-      VALUES (${key}, ${period}, ${prefix}, 1, 6, NOW(6))
+      VALUES (${key}, ${period}, ${prefix}, 1, 6, NOW(3))
     `
 
     updated = await db.$executeRaw`
       UPDATE number_sequences
-         SET nextValue = nextValue + 1, updatedAt = NOW(6)
+         SET nextValue = nextValue + 1, updatedAt = NOW(3)
        WHERE \`key\` = ${key} AND period = ${period}
     `
   }

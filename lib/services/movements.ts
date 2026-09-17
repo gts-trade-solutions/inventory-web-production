@@ -369,8 +369,8 @@ async function applyStockDelta(
 ): Promise<void> {
   await tx.$executeRaw`
     INSERT INTO stock_levels (itemId, locationId, batchId, quantity, updatedAt)
-    VALUES (${itemId}, ${locationId}, ${batchKey}, ${delta}, NOW(6))
-    ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity), updatedAt = NOW(6)
+    VALUES (${itemId}, ${locationId}, ${batchKey}, ${delta}, NOW(3))
+    ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity), updatedAt = NOW(3)
   `
 }
 

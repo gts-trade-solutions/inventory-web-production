@@ -641,8 +641,8 @@ async function main() {
       if (!locationId) continue
       await prisma.$executeRaw`
         INSERT INTO stock_levels (itemId, locationId, batchId, quantity, updatedAt)
-        VALUES (${entry.itemId}, ${locationId}, ${batchKey}, ${delta}, NOW(6))
-        ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity), updatedAt = NOW(6)
+        VALUES (${entry.itemId}, ${locationId}, ${batchKey}, ${delta}, NOW(3))
+        ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity), updatedAt = NOW(3)
       `
     }
   }

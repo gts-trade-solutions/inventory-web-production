@@ -38,7 +38,7 @@ export async function rebuildProjections(prisma: PrismaClient): Promise<{ rows: 
 
       await tx.$executeRawUnsafe(`
         INSERT INTO stock_levels (itemId, locationId, batchId, quantity, updatedAt)
-        SELECT itemId, locationId, batchId, SUM(delta) AS quantity, NOW(6)
+        SELECT itemId, locationId, batchId, SUM(delta) AS quantity, NOW(3)
           FROM (
                 SELECT itemId, toLocationId   AS locationId,
                        COALESCE(batchId, '${NO_BATCH_SQL}') AS batchId,

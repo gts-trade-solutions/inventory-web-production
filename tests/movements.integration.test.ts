@@ -252,7 +252,7 @@ describe('serial conflicts', () => {
     const [unitId] = await seedSerialUnits(wh.drillId, wh.locationA, 1)
     await prisma.$executeRaw`
       INSERT INTO stock_levels (itemId, locationId, batchId, quantity, updatedAt)
-      VALUES (${wh.drillId}, ${wh.locationA}, '00000000-0000-0000-0000-000000000000', 1, NOW(6))
+      VALUES (${wh.drillId}, ${wh.locationA}, '00000000-0000-0000-0000-000000000000', 1, NOW(3))
     `
 
     const issue = () =>
@@ -278,7 +278,7 @@ describe('serial conflicts', () => {
     const units = await seedSerialUnits(wh.drillId, wh.locationA, 3)
     await prisma.$executeRaw`
       INSERT INTO stock_levels (itemId, locationId, batchId, quantity, updatedAt)
-      VALUES (${wh.drillId}, ${wh.locationA}, '00000000-0000-0000-0000-000000000000', 3, NOW(6))
+      VALUES (${wh.drillId}, ${wh.locationA}, '00000000-0000-0000-0000-000000000000', 3, NOW(3))
     `
 
     const outcome = await record({
