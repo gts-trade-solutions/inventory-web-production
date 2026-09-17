@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+coverage
+
+# Generated
+next-env.d.ts
+prisma/migrations
+
+# Documentation is hand-formatted: the tables are laid out for reading in a
+# diff, and Prettier's markdown table padding makes them harder to edit.
+docs/**/*.md
+README.md

@@ -1,0 +1,9 @@
+# Normalise line endings so Windows and the Linux CI runner agree.
+* text=auto eol=lf
+
+*.sql   text eol=lf
+*.prisma text eol=lf
+*.md    text eol=lf
+
+# Keep generated lockfiles out of diffs and merge conflicts.
+package-lock.json -diff linguist-generated

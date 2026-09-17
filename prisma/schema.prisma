@@ -1,0 +1,838 @@
+// ---------------------------------------------------------------------------
+// Inventory App — database schema
+//
+// One schema, applied to BOTH databases: `inventory` (live) and `inventory_demo`.
+// The mode resolver picks one per request; they are never joined (ARCHITECTURE §8).
+//
+// The core of this model is an append-only stock ledger. `Movement` rows are
+// never updated or deleted; `StockLevel`, `SerialUnit.locationId/status` and
+// batch balances are PROJECTIONS rebuildable from the ledger (ARCHITECTURE §4.3).
+// A correction is a new compensating movement, never an edit.
+//
+// Reference: docs/ARCHITECTURE.md §4
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// Enums
+// ===========================================================================
+
+enum LocationZone {
+  INBOUND
+  STORAGE
+  OUTBOUND
+}
+
+/// Drives what a movement for this item must carry (ARCHITECTURE §4.1, WADR-017).
+/// NONE behaves exactly as the mobile MVP does today.
+enum TrackingMode {
+  NONE
+  BATCH
+  SERIAL
+}
+
+enum BarcodeType {
+  EAN13
+  ITF14
+  CODE128
+  QR
+  OTHER
+}
+
+enum BatchStatus {
+  ACTIVE
+  QUARANTINE
+  EXPIRED
+  BLOCKED
+  CONSUMED
+}
+
+enum SerialStatus {
+  IN_STOCK
+  ISSUED
+  SCRAPPED
+  QUARANTINE
+}
+
+enum MovementType {
+  RECEIVE
+  ISSUE
+  MOVE
+  ADJUST
+  COUNT
+  SCRAP
+}
+
+enum MovementSource {
+  WEB
+  MOBILE
+  IMPORT
+  ERP
+}
+
+enum CountMethod {
+  RFID
+  BARCODE
+  MANUAL
+}
+
+enum CountStatus {
+  DRAFT
+  COUNTING
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum UserRole {
+  ADMIN
+  SUPERVISOR
+  USER
+}
+
+enum DeviceKind {
+  SCANNER
+  RFID_READER
+  PRINTER
+  MOBILE_COMPUTER
+}
+
+enum DeviceConnection {
+  BLUETOOTH
+  USB
+  NETWORK
+  SIMULATED
+}
+
+enum PrintJobStatus {
+  QUEUED
+  SENT
+  CONFIRMED
+  FAILED
+}
+
+enum LabelKind {
+  ITEM
+  BATCH
+  SERIAL
+  LOCATION
+  PALLET
+}
+
+enum ReasonScope {
+  ADJUST
+  SCRAP
+  COUNT
+  QUARANTINE
+}
+
+// ===========================================================================
+// Organisation
+// ===========================================================================
+
+model Site {
+  id     String  @id @db.Char(36)
+  code   String  @unique @db.VarChar(16)
+  name   String  @db.VarChar(120)
+  active Boolean @default(true)
+
+  createdAt DateTime  @default(now()) @db.DateTime(6)
+  updatedAt DateTime  @updatedAt @db.DateTime(6)
+  deletedAt DateTime? @db.DateTime(6)
+
+  locations     Location[]
+  movements     Movement[]
+  countSessions CountSession[]
+  devices       Device[]
+  users         UserSite[]
+
+  @@map("sites")
+}
+
+model Category {
+  id       String  @id @db.Char(36)
+  name     String  @db.VarChar(120)
+  parentId String? @db.Char(36)
+  active   Boolean @default(true)
+
+  createdAt DateTime  @default(now()) @db.DateTime(6)
+  updatedAt DateTime  @updatedAt @db.DateTime(6)
+  deletedAt DateTime? @db.DateTime(6)
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children Category[] @relation("CategoryTree")
+  items    Item[]
+
+  @@unique([name, parentId])
+  @@index([parentId])
+  @@map("categories")
+}
+
+// ===========================================================================
+// Master data
+// ===========================================================================
+
+model Item {
+  id         String  @id @db.Char(36)
+  sku        String  @unique @db.VarChar(64)
+  name       String  @db.VarChar(200)
+  categoryId String? @db.Char(36)
+  /// Unit of issue: pcs, rolls, boxes, kg. Display only; quantities are integers.
+  unit       String  @db.VarChar(24)
+
+  reorderPoint Int  @default(0)
+  maxLevel     Int?
+
+  /// NONE | BATCH | SERIAL — see TrackingMode.
+  trackingMode TrackingMode @default(NONE)
+  /// Receiving this item requires an expiry date (BATCH items only).
+  expiryRequired Boolean @default(false)
+  /// When set, expiry is derived from the manufacturing date on receipt.
+  shelfLifeDays  Int?
+  /// Days before expiry at which stock is reported as near-expiry.
+  nearExpiryDays Int     @default(30)
+
+  active Boolean @default(true)
+
+  createdAt DateTime  @default(now()) @db.DateTime(6)
+  /// Drives the mobile sync pull cursor (API_CONTRACT §2).
+  updatedAt DateTime  @updatedAt @db.DateTime(6)
+  deletedAt DateTime? @db.DateTime(6)
+
+  category    Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  barcodes    ItemBarcode[]
+  batches     Batch[]
+  serialUnits SerialUnit[]
+  movements   Movement[]
+  stockLevels StockLevel[]
+  countLines  CountLine[]
+  epcBlocks   EpcSerialBlock[]
+  printJobs   PrintJob[]
+
+  @@index([updatedAt])
+  @@index([categoryId])
+  @@index([trackingMode])
+  @@index([active, name])
+  @@map("items")
+}
+
+/// Real warehouses have a piece barcode AND a case barcode. Scanning a case
+/// barcode means `packSize` units, not one (ARCHITECTURE §4.2).
+model ItemBarcode {
+  id        String      @id @db.Char(36)
+  itemId    String      @db.Char(36)
+  barcode   String      @unique @db.VarChar(64)
+  type      BarcodeType @default(EAN13)
+  packSize  Int         @default(1)
+  isPrimary Boolean     @default(false)
+
+  createdAt DateTime @default(now()) @db.DateTime(6)
+  updatedAt DateTime @updatedAt @db.DateTime(6)
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+  @@index([updatedAt])
+  @@map("item_barcodes")
+}
+
+model Location {
+  id     String       @id @db.Char(36)
+  siteId String       @db.Char(36)
+  code   String       @db.VarChar(32)
+  name   String       @db.VarChar(120)
+  zone   LocationZone @default(STORAGE)
+  active Boolean      @default(true)
+
+  createdAt DateTime  @default(now()) @db.DateTime(6)
+  updatedAt DateTime  @updatedAt @db.DateTime(6)
+  deletedAt DateTime? @db.DateTime(6)
+
+  site          Site           @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  movementsFrom Movement[]     @relation("MovementFrom")
+  movementsTo   Movement[]     @relation("MovementTo")
+  stockLevels   StockLevel[]
+  countSessions CountSession[]
+  serialUnits   SerialUnit[]
+  printJobs     PrintJob[]
+
+  @@unique([siteId, code])
+  @@index([updatedAt])
+  @@index([zone])
+  @@map("locations")
+}
+
+// ===========================================================================
+// Traceability: batches and serial units
+// ===========================================================================
+
+/// The unit of recall and of expiry. Created inline by a RECEIVE for a
+/// BATCH-tracked item (API_CONTRACT §3).
+model Batch {
+  id          String      @id @db.Char(36)
+  itemId      String      @db.Char(36)
+  batchNo     String      @db.VarChar(64)
+  mfgDate     DateTime?   @db.Date
+  expiryDate  DateTime?   @db.Date
+  supplierRef String?     @db.VarChar(120)
+  status      BatchStatus @default(ACTIVE)
+  notes       String?     @db.Text
+
+  receivedAt DateTime @default(now()) @db.DateTime(6)
+  createdAt  DateTime @default(now()) @db.DateTime(6)
+  updatedAt  DateTime @updatedAt @db.DateTime(6)
+
+  item        Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  serialUnits SerialUnit[]
+  movements   Movement[]
+  countLines  CountLine[]
+  printJobs   PrintJob[]
+
+  @@unique([itemId, batchNo])
+  @@index([expiryDate])
+  @@index([itemId, expiryDate])
+  @@index([status])
+  @@index([updatedAt])
+  @@map("batches")
+}
+
+/// One row per physical unit. `epc` is the link to RFID: an SGTIN-96 tag read
+/// decodes to exactly this unit, which is what makes cycle counts unit-level
+/// rather than quantity-level (ARCHITECTURE §5.4, WADR-019).
+model SerialUnit {
+  id       String       @id @db.Char(36)
+  itemId   String       @db.Char(36)
+  serialNo String       @db.VarChar(64)
+  batchId  String?      @db.Char(36)
+  /// GS1 SGTIN-96, 24 hex characters. Unique across the whole system — a
+  /// duplicate here means two physical tags claim to be the same unit.
+  epc      String?      @unique @db.Char(24)
+  status   SerialStatus @default(IN_STOCK)
+  /// Current location. NULL once the unit has left (ISSUED/SCRAPPED).
+  /// A projection of the ledger, like StockLevel.
+  locationId String?    @db.Char(36)
+
+  warrantyUntil DateTime? @db.Date
+  receivedAt    DateTime  @default(now()) @db.DateTime(6)
+  issuedAt      DateTime? @db.DateTime(6)
+
+  createdAt DateTime @default(now()) @db.DateTime(6)
+  updatedAt DateTime @updatedAt @db.DateTime(6)
+
+  item      Item             @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  batch     Batch?           @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  location  Location?        @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  movements MovementSerial[]
+  countTags CountTag[]
+  printJobs PrintJob[]
+
+  @@unique([itemId, serialNo])
+  @@index([itemId, status])
+  @@index([locationId])
+  @@index([batchId])
+  @@index([updatedAt])
+  @@map("serial_units")
+}
+
+// ===========================================================================
+// The ledger
+// ===========================================================================
+
+/// APPEND-ONLY. Never updated, never deleted (WADR-002). The primary key is a
+/// UUID generated by whichever client created it, which makes every push
+/// idempotent: a retry is a duplicate-key no-op (ARCHITECTURE §5.6).
+model Movement {
+  id String @id @db.Char(36)
+
+  /// Human-readable document number, e.g. RCV-2026-000123. Allocated on the
+  /// SERVER at the moment of recording, so an offline movement is numbered
+  /// when it syncs (ARCHITECTURE §4.4, WADR-021).
+  docNo String @unique @db.VarChar(32)
+
+  siteId String       @db.Char(36)
+  itemId String       @db.Char(36)
+  type   MovementType
+
+  /// Always positive. Direction comes from the locations: +quantity at
+  /// `toLocationId`, -quantity at `fromLocationId`.
+  quantity Int
+
+  /// Set for BATCH-tracked items, and for SERIAL units that belong to a batch.
+  batchId        String? @db.Char(36)
+  fromLocationId String? @db.Char(36)
+  toLocationId   String? @db.Char(36)
+
+  /// Required for ADJUST and SCRAP (WADR-022).
+  reasonCodeId String? @db.Char(36)
+
+  note      String? @db.Text
+  /// Free-text external reference: works order, delivery note, PO number.
+  reference String? @db.VarChar(120)
+
+  /// Client clock — recorded for the operator's timeline, never trusted.
+  occurredAt DateTime @db.DateTime(6)
+  /// Server clock — what ordering and sync cursors use (API_CONTRACT §9).
+  recordedAt DateTime @default(now()) @db.DateTime(6)
+
+  userId         String?        @db.Char(36)
+  deviceId       String?        @db.Char(36)
+  countSessionId String?        @db.Char(36)
+  source         MovementSource @default(WEB)
+
+  site         Site             @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  item         Item             @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  batch        Batch?           @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  fromLocation Location?        @relation("MovementFrom", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocation   Location?        @relation("MovementTo", fields: [toLocationId], references: [id], onDelete: Restrict)
+  reasonCode   ReasonCode?      @relation(fields: [reasonCodeId], references: [id], onDelete: Restrict)
+  user         User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  device       Device?          @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  countSession CountSession?    @relation(fields: [countSessionId], references: [id], onDelete: Restrict)
+  serials      MovementSerial[]
+
+  @@index([itemId, occurredAt])
+  @@index([siteId, recordedAt])
+  /// The sync pull cursor scans this.
+  @@index([recordedAt])
+  @@index([batchId])
+  @@index([countSessionId])
+  @@index([type])
+  @@index([deviceId])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@map("movements")
+}
+
+/// Exactly `Movement.quantity` rows for a SERIAL-tracked item. The transaction
+/// enforces that count — a mismatch is a bug that must fail loudly.
+model MovementSerial {
+  movementId   String @db.Char(36)
+  serialUnitId String @db.Char(36)
+
+  movement   Movement   @relation(fields: [movementId], references: [id], onDelete: Restrict)
+  serialUnit SerialUnit @relation(fields: [serialUnitId], references: [id], onDelete: Restrict)
+
+  @@id([movementId, serialUnitId])
+  @@index([serialUnitId])
+  @@map("movement_serials")
+}
+
+/// PROJECTION of the ledger, maintained in the same transaction as the movement
+/// via INSERT ... ON DUPLICATE KEY UPDATE (ARCHITECTURE §4.3).
+///
+/// `batchId` is NOT NULL and uses the all-zero UUID for untracked items, so the
+/// primary key never contains NULL — MySQL treats NULLs as distinct in unique
+/// keys, which would silently break the upsert. There is deliberately no foreign
+/// key on it; the sentinel has no Batch row. The sentinel is an implementation
+/// detail and is never sent over the API (API_CONTRACT §2).
+model StockLevel {
+  itemId     String @db.Char(36)
+  locationId String @db.Char(36)
+  batchId    String @db.Char(36)
+
+  /// SIGNED. An offline over-issue can land negative; that is accepted and
+  /// flagged for a supervisor rather than rejected (WADR-007).
+  quantity Int
+
+  updatedAt DateTime @updatedAt @db.DateTime(6)
+
+  item     Item     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@id([itemId, locationId, batchId])
+  @@index([locationId])
+  /// Drives the negative-stock exception list.
+  @@index([quantity])
+  @@index([updatedAt])
+  @@map("stock_levels")
+}
+
+// ===========================================================================
+// Cycle counts
+// ===========================================================================
+
+model CountSession {
+  id     String      @id @db.Char(36)
+  docNo  String      @unique @db.VarChar(32)
+  siteId String      @db.Char(36)
+
+  locationId String      @db.Char(36)
+  method     CountMethod @default(BARCODE)
+  status     CountStatus @default(COUNTING)
+
+  startedById  String    @db.Char(36)
+  startedAt    DateTime  @default(now()) @db.DateTime(6)
+  submittedAt  DateTime? @db.DateTime(6)
+  approvedById String?   @db.Char(36)
+  approvedAt   DateTime? @db.DateTime(6)
+  rejectedNote String?   @db.Text
+
+  createdAt DateTime @default(now()) @db.DateTime(6)
+  updatedAt DateTime @updatedAt @db.DateTime(6)
+
+  site       Site       @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  location   Location   @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  startedBy  User       @relation("CountStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
+  approvedBy User?      @relation("CountApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  lines      CountLine[]
+  tags       CountTag[]
+  movements  Movement[]
+
+  @@index([status])
+  @@index([locationId])
+  @@index([siteId, startedAt])
+  @@map("count_sessions")
+}
+
+/// Variance at the item's tracking grain: per batch for BATCH items, aggregated
+/// from named units for SERIAL items.
+model CountLine {
+  sessionId String @db.Char(36)
+  itemId    String @db.Char(36)
+  /// All-zero UUID sentinel for untracked items, as in StockLevel.
+  batchId   String @db.Char(36)
+
+  expected Int
+  counted  Int
+
+  session CountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  item    Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  batch   Batch?       @relation(fields: [batchId], references: [id], onDelete: Restrict, map: "count_lines_batch_fk")
+
+  @@id([sessionId, itemId, batchId])
+  @@index([itemId])
+  @@index([batchId])
+  @@map("count_lines")
+}
+
+/// Raw RFID reads behind a count, kept for audit and troubleshooting.
+/// De-duplicated by (sessionId, epc).
+model CountTag {
+  id        String @id @db.Char(36)
+  sessionId String @db.Char(36)
+  epc       String @db.Char(24)
+
+  /// Resolved by decoding the SGTIN-96, when the EPC maps to a known unit.
+  serialUnitId String? @db.Char(36)
+  itemId       String? @db.Char(36)
+
+  rssi   Int?
+  readAt DateTime @db.DateTime(6)
+
+  session    CountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  serialUnit SerialUnit?  @relation(fields: [serialUnitId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, epc])
+  @@index([serialUnitId])
+  @@map("count_tags")
+}
+
+// ===========================================================================
+// People and access
+// ===========================================================================
+
+model User {
+  id           String   @id @db.Char(36)
+  email        String   @unique @db.VarChar(200)
+  name         String   @db.VarChar(120)
+  passwordHash String   @db.VarChar(120)
+  role         UserRole @default(USER)
+  active       Boolean  @default(true)
+
+  defaultSiteId String? @db.Char(36)
+
+  lastLoginAt DateTime? @db.DateTime(6)
+  createdAt   DateTime  @default(now()) @db.DateTime(6)
+  updatedAt   DateTime  @updatedAt @db.DateTime(6)
+  deletedAt   DateTime? @db.DateTime(6)
+
+  sites           UserSite[]
+  movements       Movement[]
+  countsStarted   CountSession[] @relation("CountStartedBy")
+  countsApproved  CountSession[] @relation("CountApprovedBy")
+  devices         Device[]
+  printJobs       PrintJob[]
+  refreshTokens   RefreshToken[]
+  auditEntries    AuditLog[]
+
+  @@index([active])
+  @@map("users")
+}
+
+model UserSite {
+  userId String @db.Char(36)
+  siteId String @db.Char(36)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@id([userId, siteId])
+  @@index([siteId])
+  @@map("user_sites")
+}
+
+/// Rotating refresh tokens for the mobile app. Stored hashed; rotation means the
+/// previous token dies the moment a new pair is issued (API_CONTRACT §1).
+/// These live in whichever database issued them, so a DEMO token can never be
+/// presented against LIVE.
+model RefreshToken {
+  id        String @id @db.Char(36)
+  tokenHash String @unique @db.Char(64)
+
+  userId   String  @db.Char(36)
+  deviceId String? @db.Char(36)
+
+  expiresAt    DateTime  @db.DateTime(6)
+  revokedAt    DateTime? @db.DateTime(6)
+  replacedById String?   @db.Char(36)
+  createdAt    DateTime  @default(now()) @db.DateTime(6)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([deviceId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ===========================================================================
+// Devices, labels, printing
+// ===========================================================================
+
+/// Shared by both clients. Answers: what hardware do we have, where is it, who
+/// has it, is it working, and which device recorded this movement?
+model Device {
+  id    String     @id @db.Char(36)
+  label String     @db.VarChar(120)
+  kind  DeviceKind
+
+  vendor String? @db.VarChar(60)
+  model  String? @db.VarChar(60)
+  serial String? @db.VarChar(120)
+
+  connection DeviceConnection @default(SIMULATED)
+  /// Host:port for NETWORK devices, MAC for BLUETOOTH, null for SIMULATED.
+  address    String?          @db.VarChar(120)
+
+  siteId         String? @db.Char(36)
+  assignedUserId String? @db.Char(36)
+
+  lastSeenAt DateTime? @db.DateTime(6)
+  appVersion String?   @db.VarChar(40)
+  firmware   String?   @db.VarChar(60)
+  active     Boolean   @default(true)
+
+  createdAt DateTime @default(now()) @db.DateTime(6)
+  updatedAt DateTime @updatedAt @db.DateTime(6)
+
+  site          Site?            @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  assignedUser  User?            @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  movements     Movement[]
+  printJobs     PrintJob[]
+  epcBlocks     EpcSerialBlock[]
+  refreshTokens RefreshToken[]
+
+  @@index([kind])
+  @@index([siteId])
+  @@index([lastSeenAt])
+  @@map("devices")
+}
+
+/// ZPL lives in the database, not in code, so a label can change without an app
+/// release and both clients render the same thing (WADR-016).
+model LabelTemplate {
+  id     String    @id @db.Char(36)
+  name   String    @db.VarChar(120)
+  kind   LabelKind @default(ITEM)
+  zplBody String   @db.Text
+
+  widthMm  Int     @default(100)
+  heightMm Int     @default(50)
+  dpi      Int     @default(203)
+  /// Emits ^RFW to encode the RFID tag in the same pass as printing.
+  rfidEncode Boolean @default(false)
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now()) @db.DateTime(6)
+  updatedAt DateTime @updatedAt @db.DateTime(6)
+
+  printJobs PrintJob[]
+
+  @@unique([name])
+  @@index([kind, active])
+  @@index([updatedAt])
+  @@map("label_templates")
+}
+
+/// Print history and the audit trail for RFID encoding: every physical tag is
+/// traceable to its unit, operator and moment (ARCHITECTURE §5.4).
+model PrintJob {
+  id    String @id @db.Char(36)
+  docNo String @unique @db.VarChar(32)
+
+  templateId      String  @db.Char(36)
+  printerDeviceId String? @db.Char(36)
+
+  payloadZpl String         @db.Text
+  copies     Int            @default(1)
+  status     PrintJobStatus @default(QUEUED)
+  error      String?        @db.Text
+
+  itemId       String? @db.Char(36)
+  batchId      String? @db.Char(36)
+  serialUnitId String? @db.Char(36)
+  locationId   String? @db.Char(36)
+  /// The EPC encoded by this job, when rfidEncode was on.
+  epc          String? @db.Char(24)
+
+  userId    String?   @db.Char(36)
+  createdAt DateTime  @default(now()) @db.DateTime(6)
+  sentAt    DateTime? @db.DateTime(6)
+
+  template      LabelTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  printerDevice Device?       @relation(fields: [printerDeviceId], references: [id], onDelete: SetNull)
+  item          Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  batch         Batch?        @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  serialUnit    SerialUnit?   @relation(fields: [serialUnitId], references: [id], onDelete: SetNull)
+  location      Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([itemId])
+  @@index([serialUnitId])
+  @@map("print_jobs")
+}
+
+/// The server owns EPC serial allocation. Blocks are never reissued, which is
+/// what prevents two devices minting the same EPC offline (WADR-009).
+model EpcSerialBlock {
+  id       String @id @db.Char(36)
+  itemId   String @db.Char(36)
+  deviceId String? @db.Char(36)
+
+  serialFrom BigInt
+  serialTo   BigInt
+  /// Highest serial the device reports as consumed; advisory, not a constraint.
+  consumedTo BigInt?
+
+  allocatedAt DateTime  @default(now()) @db.DateTime(6)
+  expiresAt   DateTime? @db.DateTime(6)
+
+  item   Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([itemId, serialTo])
+  @@index([deviceId])
+  @@map("epc_serial_blocks")
+}
+
+// ===========================================================================
+// Governance
+// ===========================================================================
+
+/// Adjustments and scrap come from a controlled list, not free text — free-text
+/// reasons are unauditable and unreportable (WADR-022).
+model ReasonCode {
+  id        String      @id @db.Char(36)
+  code      String      @unique @db.VarChar(32)
+  label     String      @db.VarChar(120)
+  appliesTo ReasonScope
+  requiresNote Boolean  @default(false)
+  active    Boolean     @default(true)
+
+  createdAt DateTime @default(now()) @db.DateTime(6)
+  updatedAt DateTime @updatedAt @db.DateTime(6)
+
+  movements Movement[]
+
+  @@index([appliesTo, active])
+  @@index([updatedAt])
+  @@map("reason_codes")
+}
+
+/// Human-readable document numbers, allocated atomically with
+/// UPDATE ... SET nextValue = LAST_INSERT_ID(nextValue + 1) (ARCHITECTURE §4.4).
+model NumberSequence {
+  /// Document prefix: RCV, ISS, MOV, ADJ, SCR, CNT, PRN.
+  key    String @db.VarChar(16)
+  /// Usually the year, so numbering restarts each year.
+  period String @db.VarChar(16)
+
+  prefix    String @db.VarChar(16)
+  nextValue Int    @default(1)
+  /// Zero-padding width: 6 gives RCV-2026-000123.
+  padding   Int    @default(6)
+
+  updatedAt DateTime @updatedAt @db.DateTime(6)
+
+  @@id([key, period])
+  @@map("number_sequences")
+}
+
+/// Master data and admin actions. The ledger is its own audit trail, so stock
+/// changes are deliberately not duplicated here.
+model AuditLog {
+  id String @id @db.Char(36)
+
+  actorUserId String? @db.Char(36)
+  action      String  @db.VarChar(80)
+  entity      String  @db.VarChar(60)
+  entityId    String? @db.Char(36)
+
+  before Json?
+  after  Json?
+
+  ip        String?  @db.VarChar(64)
+  userAgent String?  @db.VarChar(255)
+  at        DateTime @default(now()) @db.DateTime(6)
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([actorUserId])
+  @@index([at])
+  @@map("audit_log")
+}
+
+/// For the ERP integration and any external system (ARCHITECTURE §4.2).
+model ApiClient {
+  id         String  @id @db.Char(36)
+  name       String  @unique @db.VarChar(120)
+  secretHash String  @db.Char(64)
+  /// Space-separated scopes, e.g. "movements:write items:read".
+  scopes     String  @db.VarChar(255)
+  active     Boolean @default(true)
+
+  lastUsedAt DateTime? @db.DateTime(6)
+  createdAt  DateTime  @default(now()) @db.DateTime(6)
+  updatedAt  DateTime  @updatedAt @db.DateTime(6)
+
+  @@map("api_clients")
+}
+
+/// Expiry policy, FEFO policy, variance thresholds, adjustment limits, print
+/// defaults. `siteId` is "" for a global value, so the composite unique key
+/// never contains NULL (same reasoning as StockLevel.batchId).
+model Setting {
+  key    String @db.VarChar(80)
+  siteId String @default("") @db.VarChar(36)
+
+  value Json
+
+  updatedAt DateTime @updatedAt @db.DateTime(6)
+
+  @@id([key, siteId])
+  @@map("settings")
+}

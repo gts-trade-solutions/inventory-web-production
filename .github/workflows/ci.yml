@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  quality:
+    name: Typecheck · Lint · Test
+    runs-on: ubuntu-latest
+
+    # The schema is applied to both databases in every environment, so CI checks
+    # both. A migration that only works against one is a production incident
+    # waiting for a demo (ARCHITECTURE §10).
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root
+          MYSQL_DATABASE: inventory
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: mysql://root:ci_root@127.0.0.1:3306/inventory
+      DATABASE_URL_DEMO: mysql://root:ci_root@127.0.0.1:3306/inventory_demo
+      AUTH_SECRET: ci-placeholder-secret-not-used-for-anything
+      JWT_SIGNING_KEY: ci-placeholder-jwt-key-not-used-for-anything
+      DEMO_MODE_ENABLED: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Create the demo database
+        run: |
+          mysql -h 127.0.0.1 -uroot -pci_root \
+            -e "CREATE DATABASE IF NOT EXISTS inventory_demo CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations — live
+        run: npx prisma migrate deploy
+
+      - name: Apply migrations — demo
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL_DEMO }}
+
+      - name: Migration drift check
+        # Fails if schema.prisma has changed without a matching migration, which
+        # is the usual way a schema edit reaches production unapplied.
+        run: |
+          npx prisma migrate diff \
+            --from-migrations ./prisma/migrations \
+            --to-schema-datamodel ./prisma/schema.prisma \
+            --shadow-database-url "$DATABASE_URL" \
+            --exit-code && echo "No drift." || {
+              echo "::error::schema.prisma has uncommitted changes. Run: npm run db:migrate"
+              exit 1
+            }
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Unit tests
+        # lib/domain carries the ledger rules ported from the mobile app's Kotlin
+        # tests. These are the specification, not a smoke test (PROJECT_PLAN 1.2).
+        run: npm test
+
+      - name: Build
+        run: npm run build
