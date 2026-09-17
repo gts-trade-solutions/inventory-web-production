@@ -1,0 +1,294 @@
+###############################################################################
+# Inventory API — /api/v1
+#
+# A runnable collection for the mobile team. Open in VS Code with the REST
+# Client extension, or in any JetBrains IDE, and click "Send Request".
+#
+# Run the requests in order the first time: signing in populates @accessToken,
+# which everything after it needs.
+#
+# Reference: docs/API_CONTRACT.md. Where the two disagree, the contract is the
+# specification and this file is the bug.
+###############################################################################
+
+@host = http://localhost:3000
+@base = {{host}}/api/v1
+
+# Demo credentials. The demo database is wiped on every reseed and holds nothing
+# real — that is why they are printed here and on the login screen.
+@email = operator@inventory.local
+@supervisorEmail = supervisor@inventory.local
+@password = demo1234
+
+# Any stable id the handset can reproduce after a reinstall. A fresh uuid on
+# every launch fills the device registry with ghosts of the same phone.
+@deviceId = 6f1b9d54-7a3e-4c1e-9a0f-2b8c5d4e7a11
+
+###############################################################################
+# 1. Health
+###############################################################################
+
+### No authentication. Use it for reachability, not for liveness of your session.
+GET {{base}}/health
+
+###############################################################################
+# 2. Authentication
+###############################################################################
+
+### Sign in and register the device.
+# @name signIn
+POST {{base}}/auth/token
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "mode": "DEMO",
+  "device": {
+    "id": "{{deviceId}}",
+    "label": "Warehouse handset 01",
+    "platform": "ANDROID",
+    "appVersion": "1.0.0",
+    "osVersion": "13"
+  }
+}
+
+@accessToken = {{signIn.response.body.accessToken}}
+@refreshToken = {{signIn.response.body.refreshToken}}
+
+### Rotate. The old refresh token dies the moment this succeeds.
+# @name refresh
+POST {{base}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}",
+  "mode": "DEMO"
+}
+
+### Replay a used refresh token — expect 401.
+# Presenting a rotated token means it leaked, so every session for the device is
+# revoked rather than just this request refused. Send the request above twice to
+# see it.
+POST {{base}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}",
+  "mode": "DEMO"
+}
+
+### Sign in as a supervisor, for the approval calls below.
+# @name supervisorSignIn
+POST {{base}}/auth/token
+Content-Type: application/json
+
+{
+  "email": "{{supervisorEmail}}",
+  "password": "{{password}}",
+  "mode": "DEMO"
+}
+
+@supervisorToken = {{supervisorSignIn.response.body.accessToken}}
+
+###############################################################################
+# 3. Sync
+###############################################################################
+
+### Full sync. Omit `since` the first time.
+# @name pull
+GET {{base}}/sync/pull
+Authorization: Bearer {{accessToken}}
+
+@cursor = {{pull.response.body.nextCursor}}
+
+### Incremental. Keep calling while hasMore is true.
+# `limit` applies PER ENTITY, so a page may hold 500 items and 3 locations.
+GET {{base}}/sync/pull?since={{cursor}}&limit=500
+Authorization: Bearer {{accessToken}}
+
+### A cursor we did not issue — expect 400 INVALID_CURSOR.
+# Never build one from the device clock. Drift silently skips every change in
+# the gap, with no error and no symptom until a count disagrees.
+GET {{base}}/sync/pull?since=not-a-real-cursor
+Authorization: Bearer {{accessToken}}
+
+### Push the outbox.
+# Each row is judged on its own and always gets a verdict — ACCEPTED, DUPLICATE,
+# FLAGGED or REJECTED — so one bad row never blocks the batch. `id` is the
+# client's, and resending the same id is what makes a retry idempotent.
+#
+# Replace itemId / toLocationId / siteId with values from the pull above.
+POST {{base}}/sync/push
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "movements": [
+    {
+      "id": "11111111-2222-3333-4444-555555555555",
+      "itemId": "PUT-AN-ITEM-ID-HERE",
+      "type": "RECEIVE",
+      "quantity": 12,
+      "toLocationId": "PUT-A-LOCATION-ID-HERE",
+      "occurredAt": "2026-09-17T08:14:00.000Z",
+      "siteId": "PUT-A-SITE-ID-HERE"
+    }
+  ]
+}
+
+###############################################################################
+# 4. Registers and traceability
+###############################################################################
+
+### The batch register, with on-hand and expiry state already worked out.
+GET {{base}}/batches
+Authorization: Bearer {{accessToken}}
+
+### Only what has expired.
+GET {{base}}/batches?expiry=EXPIRED
+Authorization: Bearer {{accessToken}}
+
+### The serial register. `q` takes a scanned EPC as readily as a typed serial.
+GET {{base}}/serials?limit=20
+Authorization: Bearer {{accessToken}}
+
+### Resolve a scanned tag. An EPC is matched exactly, never partially.
+GET {{base}}/serials?q=30361F49C800004000000001
+Authorization: Bearer {{accessToken}}
+
+### The recall query: where a batch's stock sits, every movement, every unit.
+GET {{base}}/trace/batch/PUT-A-BATCH-ID-HERE
+Authorization: Bearer {{accessToken}}
+
+### The full life of one physical unit.
+GET {{base}}/serials/PUT-A-UNIT-ID-HERE/history
+Authorization: Bearer {{accessToken}}
+
+###############################################################################
+# 5. Cycle counts
+###############################################################################
+
+### Sessions awaiting a decision.
+GET {{base}}/counts?status=SUBMITTED
+Authorization: Bearer {{accessToken}}
+
+### Start one. The id is the client's, so a retry on a flaky link is idempotent
+# rather than opening a second session for the same bin.
+POST {{base}}/counts
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "siteId": "PUT-A-SITE-ID-HERE",
+  "locationId": "PUT-A-LOCATION-ID-HERE",
+  "method": "RFID"
+}
+
+### Stream raw tag reads into the session.
+# De-duplicated by (session, EPC): a reader sees the same tag dozens of times per
+# sweep, so counting every read would multiply stock by the dwell time. Safe to
+# retry the whole batch.
+POST {{base}}/counts/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/tags
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "tags": [
+    { "epc": "30361F49C800004000000001", "rssi": -52 },
+    { "epc": "30361F49C800004000000002", "rssi": -61 }
+  ]
+}
+
+### Submit for approval. WRITES NOTHING TO THE LEDGER.
+# The phone must say "submitted for approval", not "stock updated".
+#
+# A count is BLIND over the whole location: anything expected there and not
+# counted is proposed for write-off. Send every line you counted, not just the
+# ones that differ. The response's `summary.missing` is how many lines were
+# never counted at all.
+POST {{base}}/counts/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/submit
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "counted": [
+    { "itemId": "PUT-AN-ITEM-ID-HERE", "batchId": null, "quantity": 17 }
+  ]
+}
+
+### Approve — SUPERVISOR or above. This is what posts the COUNT movements.
+POST {{base}}/counts/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/approve
+Authorization: Bearer {{supervisorToken}}
+
+### The same call with an operator token — expect 403 FORBIDDEN.
+POST {{base}}/counts/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/approve
+Authorization: Bearer {{accessToken}}
+
+### Reject. Stock is left exactly as it was.
+POST {{base}}/counts/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/reject
+Authorization: Bearer {{supervisorToken}}
+Content-Type: application/json
+
+{
+  "note": "Counted the wrong aisle."
+}
+
+###############################################################################
+# 6. RFID serial blocks
+###############################################################################
+
+### Claim a block of serials to encode from while offline.
+# The server owns serial numbers. Two phones minting their own would eventually
+# produce the same EPC, and two physical tags claiming to be the same unit
+# cannot be told apart without unpacking both boxes.
+#
+# Ask again when the block runs low; blocks are never reissued.
+POST {{base}}/epc/allocate
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "itemId": "PUT-AN-ITEM-ID-HERE",
+  "count": 200
+}
+
+### An item with no valid EAN-13 — expect 400.
+# There is nothing to build an SGTIN from, and saying so beats handing back
+# serials that cannot become tags.
+
+###############################################################################
+# 7. Device
+###############################################################################
+
+### Heartbeat.
+# `pendingCount` is the useful field: a phone with 40 unsynced movements and a
+# recent heartbeat is reaching the server but failing to push, which looks
+# nothing like a phone that is simply out of range.
+POST {{base}}/devices/heartbeat
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "appVersion": "1.0.0",
+  "pendingCount": 0,
+  "batteryPercent": 74
+}
+
+###############################################################################
+# 8. Errors worth coding against
+###############################################################################
+
+### No token — expect 401 TOKEN_INVALID.
+GET {{base}}/sync/pull
+
+### Expired vs invalid are different codes on purpose.
+# TOKEN_EXPIRED means refresh. TOKEN_INVALID means sign in again. Conflating
+# them sends a phone into a refresh loop it can never win.
+GET {{base}}/sync/pull
+Authorization: Bearer not.a.real.token
+
+### DEVICE_REVOKED means an admin killed this handset.
+# Keep the unsynced outbox and prompt for re-login. Never discard it: it is work
+# somebody physically did.

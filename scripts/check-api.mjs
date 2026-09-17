@@ -267,6 +267,77 @@ console.log('\n=== traceability ===')
   log('  first entry is a receipt', unit.body?.history?.[0]?.type)
 }
 
+console.log('\n=== printing ===')
+{
+  const pulled = await call('/sync/pull', { headers: auth(accessToken) })
+  const templates = pulled.body.labelTemplates ?? []
+  const plain = templates.find((t) => t.kind === 'ITEM' && !t.rfidEncode)
+  const rfid = templates.find((t) => t.kind === 'ITEM' && t.rfidEncode)
+  const item = pulled.body.items.find((i) => i.barcodes?.some((b) => b.type === 'EAN13'))
+
+  const fields = {
+    itemName: item.name,
+    sku: item.sku,
+    location: 'A-01',
+    barcode12: item.barcodes.find((b) => b.type === 'EAN13').barcode.slice(0, 12),
+  }
+
+  const job = await call('/print', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ templateId: plain.id, fields, copies: 3, itemId: item.id }),
+  })
+  log('POST /print', `${job.status} ${job.body?.docNo}`)
+  log('  status', job.body?.status)
+  log('  labels', job.body?.labels)
+  log('  printer', `${job.body?.printer}${job.body?.simulated ? ' [simulated]' : ''}`)
+  log('  ZPL returned for preview', job.body?.zpl?.startsWith('^XA'))
+  log('  copies became ^PQ3', job.body?.zpl?.includes('^PQ3'))
+
+  const missingField = await call('/print', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ templateId: plain.id, fields: { itemName: item.name } }),
+  })
+  log('label with a missing value refused', `${missingField.status} ${missingField.body?.error?.code}`)
+
+  // One label per tag, never copies: copies would encode the same EPC onto
+  // every tag in the run.
+  const block = await call('/epc/allocate', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ itemId: item.id, count: 3 }),
+  })
+  const epcs = [0, 1, 2].map((offset) => epcAt(block.body.sampleEpc, block.body.serialFrom + offset))
+
+  const tagged = await call('/print', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ templateId: rfid.id, fields, epcs, itemId: item.id }),
+  })
+  log('RFID job', `${tagged.status} ${tagged.body?.labels} label(s)`)
+  log('  one ^RFW per tag', (tagged.body?.zpl?.match(/\^RFW/g) ?? []).length === 3)
+  log('  and no ^PQ', !tagged.body?.zpl?.includes('^PQ'))
+
+  const wrongTemplate = await call('/print', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ templateId: plain.id, fields, epcs }),
+  })
+  log('encoding via a non-RFID label refused', `${wrongTemplate.status} ${wrongTemplate.body?.error?.code}`)
+
+  const history = await call(`/print?itemId=${item.id}`, { headers: auth(accessToken) })
+  log('GET /print history', `${history.status} ${history.body?.jobs?.length} job(s)`)
+  log('  tag traceable to its unit', Boolean(history.body?.jobs?.find((j) => j.epc)))
+}
+
+/** Rebuilds an EPC for a different serial by rewriting the 38-bit serial field. */
+function epcAt(sampleEpc, serial) {
+  const bits = BigInt(`0x${sampleEpc}`)
+  const withoutSerial = (bits >> 38n) << 38n
+  return (withoutSerial | BigInt(serial)).toString(16).toUpperCase().padStart(24, '0')
+}
+
 console.log('\n=== count lifecycle ===')
 {
   const pulled = await call('/sync/pull', { headers: auth(accessToken) })

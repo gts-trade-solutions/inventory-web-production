@@ -2,6 +2,9 @@ import 'dotenv/config'
 import { randomUUID } from 'node:crypto'
 import {
   BatchStatus,
+  DeviceConnection,
+  DeviceKind,
+  LabelKind,
   LocationZone,
   MovementSource,
   MovementType,
@@ -672,6 +675,118 @@ async function main() {
     })
   }
 
+  // --- Label templates and devices --------------------------------------
+  //
+  // Templates live in the database, not in code, so a label can be changed
+  // without an app release (WADR-014). These are the formats the mobile MVP
+  // hard-codes in Kotlin, moved to rows.
+  //
+  // The devices are all simulated, and the UI says so on every screen they
+  // appear on. That is what lets the whole print and scan story be demonstrated
+  // before any Zebra hardware exists — and what makes it obvious that it is a
+  // demonstration (DEVICE_INTEGRATION §8).
+
+  const itemLabel = [
+    '^XA^CI28^PW812^LL406',
+    '^FO30,30^A0N,40,40^FB752,2,0,L^FD{{itemName}}^FS',
+    '^FO30,125^A0N,28,28^FDSKU {{sku}}   LOC {{location}}^FS',
+    // ^BE is EAN-13: the printer takes 12 digits and adds the check digit.
+    '^FO30,175^BY3,2,150^BEN,150,Y,N^FD{{barcode12}}^FS',
+    '^XZ',
+  ].join('\n')
+
+  await prisma.labelTemplate.createMany({
+    data: [
+      {
+        id: randomUUID(),
+        name: 'Item label 4x2',
+        kind: LabelKind.ITEM,
+        zplBody: itemLabel,
+        widthMm: 102,
+        heightMm: 51,
+        dpi: 203,
+        rfidEncode: false,
+      },
+      {
+        id: randomUUID(),
+        name: 'Item label 4x2 with RFID',
+        kind: LabelKind.ITEM,
+        zplBody: itemLabel,
+        widthMm: 102,
+        heightMm: 51,
+        dpi: 203,
+        rfidEncode: true,
+      },
+      {
+        id: randomUUID(),
+        name: 'Batch label 4x2',
+        kind: LabelKind.BATCH,
+        zplBody: [
+          '^XA^CI28^PW812^LL406',
+          '^FO30,30^A0N,40,40^FB752,2,0,L^FD{{itemName}}^FS',
+          '^FO30,125^A0N,32,32^FDBATCH {{batchNo}}^FS',
+          '^FO30,175^A0N,32,32^FDEXPIRES {{expiryDate}}^FS',
+          '^FO30,230^BY3,2,120^BCN,120,Y,N,N^FD{{batchNo}}^FS',
+          '^XZ',
+        ].join('\n'),
+        widthMm: 102,
+        heightMm: 51,
+        dpi: 203,
+        rfidEncode: false,
+      },
+      {
+        id: randomUUID(),
+        name: 'Location label 2x1',
+        kind: LabelKind.LOCATION,
+        zplBody: [
+          '^XA^CI28^PW406^LL203',
+          '^FO20,15^A0N,60,60^FD{{code}}^FS',
+          '^FO20,85^BY2,2,80^BCN,80,Y,N,N^FD{{code}}^FS',
+          '^XZ',
+        ].join('\n'),
+        widthMm: 51,
+        heightMm: 25,
+        dpi: 203,
+        rfidEncode: false,
+      },
+    ],
+  })
+
+  await prisma.device.createMany({
+    data: [
+      {
+        id: randomUUID(),
+        label: 'Goods-in printer (simulated)',
+        kind: DeviceKind.PRINTER,
+        vendor: 'Zebra',
+        model: 'ZD621R',
+        connection: DeviceConnection.SIMULATED,
+        siteId: site.id,
+        lastSeenAt: new Date(),
+      },
+      {
+        id: randomUUID(),
+        label: 'Aisle A reader (simulated)',
+        kind: DeviceKind.RFID_READER,
+        vendor: 'Zebra',
+        model: 'FX9600',
+        connection: DeviceConnection.SIMULATED,
+        siteId: site.id,
+        lastSeenAt: new Date(),
+      },
+      {
+        id: randomUUID(),
+        label: 'Ring scanner (simulated)',
+        kind: DeviceKind.SCANNER,
+        vendor: 'Zebra',
+        model: 'RS5100',
+        connection: DeviceConnection.SIMULATED,
+        siteId: site.id,
+        lastSeenAt: new Date(),
+      },
+    ],
+  })
+
   // --- On planting variances -------------------------------------------
   // An earlier version added 2 units directly to stock_levels here, to make a
   // cycle count find something. That was wrong: it created rows the ledger does
@@ -686,11 +801,13 @@ async function main() {
   console.log(`
 Demo database seeded.
 
-  items        ${PRODUCTS.length}
-  locations    ${LOCATIONS.length}
-  batches      ${batchCount}
-  serial units ${serialCount}
-  movements    ${movements}
+  items           ${PRODUCTS.length}
+  locations       ${LOCATIONS.length}
+  batches         ${batchCount}
+  serial units    ${serialCount}
+  movements       ${movements}
+  label templates 4
+  devices         3 (all simulated, and labelled as such)
 
 Sign in at /login with Demo selected:
   admin@inventory.local      / demo1234   (Administrator)

@@ -200,6 +200,12 @@ the mobile app's `Ean13.kt` and is ported), so what you see is what prints.
 pass via `^RFW` in the ZPL. The EPC comes from the server's serial-block allocation (ARCHITECTURE §5.5), and the
 encoded EPC is written to `print_jobs`, so every physical tag is traceable to its item, operator and moment.
 
+**A limit worth stating, found while building the connector:** a printer that drops the connection part way
+through a job is only detectable when the job is large enough that we are still writing when the reset arrives.
+A small job is handed to the kernel in one segment, so a mid-job drop is indistinguishable from a clean close.
+This is a property of TCP 9100, not something the connector can paper over — and it is the reason a successful
+`print()` reports `SENT` rather than `CONFIRMED`, and why reprinting a label must always be one click away.
+
 **Print status:** TCP 9100 is fire-and-forget by nature. Status (paper out, head open, paused) is read back over
 the printer's SGD / status channel where the model supports it, otherwise jobs are marked `SENT` rather than
 `CONFIRMED` and the Devices screen says so honestly rather than implying a confirmation we do not have.
