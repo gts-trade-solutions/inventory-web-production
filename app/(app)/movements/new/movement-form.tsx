@@ -107,17 +107,25 @@ export function MovementForm({
         />
       )}
 
-      {isBatch && (
-        <BatchField
-          batches={data.batches}
-          proposedId={data.proposedBatchId}
-          value={batchId}
-          onChange={setBatchId}
-          allowBlocked={isSupervisor}
-          creatable={kind === 'RECEIVE'}
-          error={state.fieldErrors?.batchId}
-        />
-      )}
+      {isBatch &&
+        (kind === 'RECEIVE' ? (
+          <ReceiveBatchField
+            batches={data.batches}
+            expiryRequired={item.expiryRequired}
+            value={batchId}
+            onChange={setBatchId}
+            error={state.fieldErrors?.batchId}
+          />
+        ) : (
+          <BatchField
+            batches={data.batches}
+            proposedId={data.proposedBatchId}
+            value={batchId}
+            onChange={setBatchId}
+            allowBlocked={isSupervisor}
+            error={state.fieldErrors?.batchId}
+          />
+        ))}
 
       {isSerial && NEEDS_SOURCE.includes(kind) && (
         <SerialField
@@ -206,13 +214,154 @@ export function MovementForm({
   )
 }
 
+/**
+ * Choosing or creating a batch on a receipt.
+ *
+ * Defaults to creating one, because a receipt is usually new stock arriving —
+ * and a batch-tracked item cannot be received at all until its batch exists, so
+ * making creation the awkward path would block the common case.
+ */
+function ReceiveBatchField({
+  batches,
+  expiryRequired,
+  value,
+  onChange,
+  error,
+}: {
+  batches: MovementFormData['batches']
+  expiryRequired: boolean
+  value: string
+  onChange: (value: string) => void
+  error?: string
+}) {
+  const existing = batches.filter((batch) => !batch.blockedReason)
+
+  // Defaults to creating even when batches exist. A receipt is usually a new
+  // lot arriving, and it is safe either way: the service upserts on
+  // (item, batchNo), so typing a lot number that already exists adds to it
+  // rather than creating a duplicate.
+  const [creating, setCreating] = useState(true)
+
+  return (
+    <Field id="batchId" label="Batch" error={error}>
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          <ModeButton active={creating} onClick={() => setCreating(true)}>
+            New batch
+          </ModeButton>
+          <ModeButton
+            active={!creating}
+            onClick={() => setCreating(false)}
+            disabled={existing.length === 0}
+          >
+            {existing.length === 0 ? 'No existing batches' : 'Existing batch'}
+          </ModeButton>
+        </div>
+
+        {creating ? (
+          <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="newBatchNo">Batch or lot number</Label>
+              <Input id="newBatchNo" name="newBatchNo" required placeholder="e.g. LOT-2026-0912" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="newMfgDate">Manufactured</Label>
+              <Input id="newMfgDate" name="newMfgDate" type="date" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="newExpiryDate">
+                Expires {expiryRequired && <span className="text-destructive">*</span>}
+              </Label>
+              <Input id="newExpiryDate" name="newExpiryDate" type="date" />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="newSupplierRef">Supplier reference</Label>
+              <Input id="newSupplierRef" name="newSupplierRef" placeholder="Optional" />
+            </div>
+
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              {expiryRequired
+                ? 'Leave the expiry blank to derive it from the manufacturing date and this item’s shelf life.'
+                : 'Both dates are optional for this item.'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {existing.map((batch) => (
+              <label
+                key={batch.id}
+                className={cn(
+                  'flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors',
+                  value === batch.id ? 'border-primary bg-primary/5' : 'hover:bg-accent',
+                )}
+              >
+                <input
+                  type="radio"
+                  name="batchId"
+                  value={batch.id}
+                  checked={value === batch.id}
+                  onChange={() => onChange(batch.id)}
+                  className="size-4"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="tabular flex items-center gap-2 text-sm font-medium">
+                    {batch.batchNo}
+                    {batch.expiryState === 'NEAR' && (
+                      <Badge variant="warn">{batch.daysToExpiry}d left</Badge>
+                    )}
+                  </span>
+                  <span className="tabular block text-xs text-muted-foreground">
+                    {batch.available} on hand
+                    {batch.expiryDate &&
+                      ` · expires ${batch.expiryDate.toISOString().slice(0, 10)}`}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    </Field>
+  )
+}
+
+function ModeButton({
+  active,
+  onClick,
+  disabled,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  disabled?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      className={cn(
+        'rounded-md border px-3 py-1.5 text-sm transition-colors',
+        active ? 'border-primary bg-primary/5 font-medium' : 'hover:bg-accent',
+        disabled && 'cursor-not-allowed opacity-50',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
 function BatchField({
   batches,
   proposedId,
   value,
   onChange,
   allowBlocked,
-  creatable,
   error,
 }: {
   batches: MovementFormData['batches']
@@ -220,7 +369,6 @@ function BatchField({
   value: string
   onChange: (value: string) => void
   allowBlocked: boolean
-  creatable: boolean
   error?: string
 }) {
   const usable = batches.filter((batch) => !batch.blockedReason || allowBlocked)
@@ -232,9 +380,7 @@ function BatchField({
       hint={
         proposedId
           ? 'The earliest-expiring batch with enough stock is selected. Changing it is recorded.'
-          : creatable
-            ? 'Choose the batch this stock belongs to.'
-            : undefined
+          : undefined
       }
       error={error}
     >

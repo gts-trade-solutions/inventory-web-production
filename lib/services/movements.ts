@@ -5,6 +5,7 @@ import { MovementSource, SerialStatus } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import type { Db } from '@/lib/db'
 import { planMovement, type MovementError, type StockAction } from '@/lib/domain/movement'
+import { resolveNewBatch, type NewBatchInput } from '@/lib/domain/batch'
 import {
   NO_BATCH,
   toBatchKey,
@@ -37,6 +38,14 @@ export interface RecordMovementInput {
   id?: string
   siteId: string
   action: StockAction
+  /**
+   * Creates the batch as part of the receipt.
+   *
+   * A batch-tracked item cannot be received into a batch that does not exist,
+   * and the batch does not exist until the stock does. Requiring a separate
+   * "create batch" step first would be a step nobody remembers on a dock.
+   */
+  newBatch?: NewBatchInput
   occurredAt?: Date
   source?: MovementSource
   deviceId?: string | null
@@ -100,7 +109,7 @@ export async function recordMovementInTx(
   options: { acceptNegative?: boolean } = {},
 ): Promise<RecordOutcome> {
   const movementId = input.id ?? randomUUID()
-  const { action } = input
+  let action = input.action
 
   // Idempotency first: a retry must be a cheap no-op, not a re-validation that
   // might now fail for unrelated reasons (ARCHITECTURE §5.6).
@@ -130,6 +139,30 @@ export async function recordMovementInTx(
 
   if (!item || item.deletedAt) {
     return rejected('UNKNOWN_ITEM', 'That item does not exist.')
+  }
+
+  // A batch named on a receipt is created before validation, so the rest of the
+  // transaction sees it like any other. Upserted rather than inserted: a retried
+  // push that already created it must not fail on the unique key.
+  if (input.newBatch) {
+    const resolved = resolveNewBatch(toDomainItem(item), input.newBatch, input.occurredAt)
+    if (!resolved.ok) return { status: 'REJECTED', error: resolved.error }
+
+    const batch = await tx.batch.upsert({
+      where: { itemId_batchNo: { itemId: item.id, batchNo: resolved.batch.batchNo } },
+      update: {},
+      create: {
+        id: randomUUID(),
+        itemId: item.id,
+        batchNo: resolved.batch.batchNo,
+        mfgDate: resolved.batch.mfgDate,
+        expiryDate: resolved.batch.expiryDate,
+        supplierRef: resolved.batch.supplierRef,
+      },
+      select: { id: true },
+    })
+
+    action = { ...action, batchId: batch.id }
   }
 
   const locationIds = locationsTouchedBy(action)

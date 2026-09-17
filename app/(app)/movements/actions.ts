@@ -31,7 +31,16 @@ const baseSchema = z.object({
 })
 
 const schemas = {
-  RECEIVE: baseSchema.extend({ kind: z.literal('RECEIVE'), toLocationId: z.string().uuid() }),
+  RECEIVE: baseSchema.extend({
+    kind: z.literal('RECEIVE'),
+    toLocationId: z.string().uuid(),
+    // A batch-tracked receipt may create its batch inline; the batch does not
+    // exist until the stock does.
+    newBatchNo: z.string().trim().max(64).optional(),
+    newMfgDate: z.string().optional(),
+    newExpiryDate: z.string().optional(),
+    newSupplierRef: z.string().trim().max(120).optional(),
+  }),
   ISSUE: baseSchema.extend({ kind: z.literal('ISSUE'), fromLocationId: z.string().uuid() }),
   MOVE: baseSchema.extend({
     kind: z.literal('MOVE'),
@@ -81,6 +90,10 @@ export async function recordMovementAction(
     reasonCodeId: formData.get('reasonCodeId') || undefined,
     note: formData.get('note') || undefined,
     reference: formData.get('reference') || undefined,
+    newBatchNo: formData.get('newBatchNo') || undefined,
+    newMfgDate: formData.get('newMfgDate') || undefined,
+    newExpiryDate: formData.get('newExpiryDate') || undefined,
+    newSupplierRef: formData.get('newSupplierRef') || undefined,
     fefoOverride: formData.get('fefoOverride') === '1',
   }
 
@@ -118,6 +131,7 @@ export async function recordMovementAction(
       siteId: input.siteId,
       action,
       source: MovementSource.WEB,
+      newBatch: newBatchFrom(input),
       allowExpiredOverride: supervisor && input.fefoOverride,
     },
     { userId: user.userId },
@@ -198,6 +212,30 @@ function toStockAction(input: z.infer<(typeof schemas)[keyof typeof schemas]>): 
         reasonCodeId: input.reasonCodeId,
       }
   }
+}
+
+/** A batch to create alongside the receipt, or undefined. */
+function newBatchFrom(input: Record<string, unknown>) {
+  const batchNo = typeof input.newBatchNo === 'string' ? input.newBatchNo : ''
+  if (!batchNo) return undefined
+
+  return {
+    batchNo,
+    mfgDate: asDate(input.newMfgDate),
+    expiryDate: asDate(input.newExpiryDate),
+    supplierRef: typeof input.newSupplierRef === 'string' ? input.newSupplierRef : null,
+  }
+}
+
+/** A date input gives ; parsed as UTC so it is not shifted a day by
+ *  the server's timezone, which is exactly how expiry dates drift. */
+function asDate(value: unknown): Date | null {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+
+  // Parsed as UTC. `new Date('2027-01-31')` is already UTC, but building it from
+  // parts would use the server's timezone and land a day earlier west of it —
+  // which is exactly how an expiry date silently drifts.
+  return new Date(`${value}T00:00:00.000Z`)
 }
 
 /** Points the error at the field that caused it, rather than at the form. */
