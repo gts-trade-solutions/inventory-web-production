@@ -1,4 +1,4 @@
-import { quantityAt } from './stock'
+import { quantityIn } from './stock'
 import {
   BatchStatus,
   MovementType,
@@ -7,7 +7,7 @@ import {
   toBatchKey,
   type Batch,
   type Item,
-  type Movement,
+  type StockLevel,
   type SerialUnit,
 } from './types'
 
@@ -88,8 +88,12 @@ export interface ExpiryPolicy {
 export interface MovementContext {
   item: Item
   knownLocationIds: ReadonlySet<string>
-  /** The ledger rows relevant to this item — enough to compute on-hand. */
-  ledger: readonly Movement[]
+  /**
+   * Current on-hand, already projected. NOT the ledger: replaying it per write
+   * would be O(movements) per movement and defeat the projection entirely
+   * (ARCHITECTURE §4.2). The service reads locked stock_levels rows into this.
+   */
+  stock: readonly StockLevel[]
   batches: readonly Batch[]
   serials: readonly SerialUnit[]
   now: Date
@@ -267,8 +271,8 @@ function planAdjust(action: AdjustAction, context: MovementContext): MovementDec
   const batch = resolveBatchForInbound(action, context)
   if (!batch.ok) return batch.decision
 
-  const onHand = quantityAt(
-    context.ledger,
+  const onHand = quantityIn(
+    context.stock,
     action.itemId,
     action.locationId,
     batch.batchId ?? undefined,
@@ -383,7 +387,7 @@ function resolveOutbound(
   }
 
   if (item.trackingMode === TrackingMode.NONE) {
-    const available = quantityAt(context.ledger, item.id, fromLocationId)
+    const available = quantityIn(context.stock, item.id, fromLocationId)
     if (quantity > available) {
       return { ok: false, decision: insufficient(available) }
     }
@@ -412,7 +416,7 @@ function resolveOutbound(
   const blocked = checkBatchUsable(batch, context, options)
   if (blocked) return { ok: false, decision: blocked }
 
-  const available = quantityAt(context.ledger, item.id, fromLocationId, batch.id)
+  const available = quantityIn(context.stock, item.id, fromLocationId, batch.id)
   if (quantity > available) {
     return { ok: false, decision: insufficient(available, { batchNo: batch.batchNo }) }
   }

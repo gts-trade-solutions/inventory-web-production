@@ -1,4 +1,5 @@
 import { ean13 } from './gtin'
+import { projectStock } from './stock'
 import {
   BatchStatus,
   LocationZone,
@@ -157,15 +158,24 @@ export function movement(overrides: Partial<Movement> & { id: string }): Movemen
 export const BLOCK_EXPIRED: ExpiryPolicy = { issuePolicy: 'BLOCK' }
 export const WARN_EXPIRED: ExpiryPolicy = { issuePolicy: 'WARN' }
 
-export function context(overrides: Partial<MovementContext> = {}): MovementContext {
+/**
+ * Builds a MovementContext. Tests describe stock as a LEDGER, because that is how
+ * the Kotlin tests read and it keeps the cases faithful; the context carries the
+ * projection, because that is what the service passes at runtime. projectStock
+ * is the bridge, so the tests exercise the same definition the database keeps.
+ */
+export function context(
+  overrides: Partial<MovementContext> & { ledger?: readonly Movement[] } = {},
+): MovementContext {
+  const { ledger, ...rest } = overrides
   return {
     item: TAPE,
     knownLocationIds: new Set([AISLE_A.id, AISLE_B.id]),
-    ledger: [],
+    stock: ledger ? projectStock(ledger) : [],
     batches: [],
     serials: [],
     now: NOW,
     policy: BLOCK_EXPIRED,
-    ...overrides,
+    ...rest,
   }
 }
