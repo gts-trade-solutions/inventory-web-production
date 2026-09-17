@@ -109,6 +109,28 @@ describe('summariseCount', () => {
     expect(summary.netUnits).toBe(0)
     expect(summary.short + summary.over).toBe(2)
   })
+
+  it('separates lines never counted from lines counted short', () => {
+    // A count is blind over the whole location, so an uncounted line is a
+    // proposed write-off. Lumping it in with "found 8 of 10" hides that from
+    // the supervisor who has to approve it.
+    const summary = summariseCount([
+      { itemId: 'a', batchId: null, expected: 10, counted: 8 },
+      { itemId: 'b', batchId: null, expected: 10, counted: 0 },
+      { itemId: 'c', batchId: null, expected: 7, counted: 0 },
+    ])
+
+    expect(summary.short).toBe(3)
+    expect(summary.missing).toBe(2)
+  })
+
+  it('does not count an over-line as missing', () => {
+    // expected 0, counted 0 cannot occur; expected 0 with stock found is a
+    // stray, which is the opposite of missing.
+    const summary = summariseCount([{ itemId: 'a', batchId: null, expected: 0, counted: 4 }])
+
+    expect(summary.missing).toBe(0)
+  })
 })
 
 describe('planCountPostings', () => {

@@ -132,12 +132,30 @@ function VarianceTable({
   return (
     <>
       {summary && (
-        <div className="grid gap-3 sm:grid-cols-4">
-          <Stat label="Lines" value={summary.lines.length} />
-          <Stat label="Matched" value={summary.matched} tone="ok" />
-          <Stat label="Short" value={summary.short} tone={summary.short ? 'warn' : undefined} />
-          <Stat label="Over" value={summary.over} tone={summary.over ? 'warn' : undefined} />
-        </div>
+        <>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Stat label="Lines" value={summary.lines.length} />
+            <Stat label="Matched" value={summary.matched} tone="ok" />
+            <Stat label="Short" value={summary.short} tone={summary.short ? 'warn' : undefined} />
+            <Stat label="Over" value={summary.over} tone={summary.over ? 'warn' : undefined} />
+          </div>
+
+          {/*
+            A count is blind over the whole location, so a line nobody scanned is
+            proposed for write-off exactly like a line counted as empty. Saying
+            only "N short" makes those two look identical on the one screen where
+            somebody decides whether to post them.
+          */}
+          {summary.missing > 0 && (
+            <p className="rounded-lg border border-warn/40 bg-warn/10 px-4 py-3 text-sm">
+              <span className="font-medium">
+                {summary.missing} of these {summary.lines.length} lines were never counted.
+              </span>{' '}
+              Approving writes all of them off. If the count was meant to cover only part of this
+              location, reject it and count the whole location instead.
+            </p>
+          )}
+        </>
       )}
 
       <div className="rounded-lg border bg-card">

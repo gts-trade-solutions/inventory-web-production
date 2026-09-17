@@ -145,6 +145,215 @@ console.log('\n=== push ===')
   log('  names the field', JSON.stringify(malformed.body?.error?.details?.fields?.[0]?.field))
 }
 
+console.log('\n=== EPC allocation ===')
+{
+  const pulled = await call('/sync/pull', { headers: auth(accessToken) })
+  const item = pulled.body.items.find((i) => i.barcodes?.some((b) => b.type === 'EAN13'))
+
+  const first = await call('/epc/allocate', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ itemId: item.id, count: 50 }),
+  })
+  log('POST /epc/allocate', first.status)
+  log('  block', `${first.body?.serialFrom}..${first.body?.serialTo}`)
+  log('  sample EPC', first.body?.sampleEpc)
+  log('  EPC is 24 hex', /^[0-9A-F]{24}$/i.test(first.body?.sampleEpc ?? ''))
+
+  const second = await call('/epc/allocate', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ itemId: item.id, count: 50 }),
+  })
+  log('second block starts after the first', second.body?.serialFrom === first.body?.serialTo + 1)
+
+  // The same property the integration test proves against the service, now over
+  // HTTP: six handsets asking at once must not receive overlapping serials.
+  const racers = await Promise.all(
+    Array.from({ length: 6 }, () =>
+      call('/epc/allocate', {
+        method: 'POST',
+        headers: auth(accessToken),
+        body: JSON.stringify({ itemId: item.id, count: 20 }),
+      }),
+    ),
+  )
+  const ranges = racers.map((r) => r.body).sort((a, b) => a.serialFrom - b.serialFrom)
+  const overlapping = ranges.some((r, i) => i > 0 && r.serialFrom <= ranges[i - 1].serialTo)
+  log('6 concurrent requests overlap', overlapping)
+
+  const tooMany = await call('/epc/allocate', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ itemId: item.id, count: 999_999 }),
+  })
+  log('absurd count refused', `${tooMany.status} ${tooMany.body?.error?.code}`)
+
+  const unknown = await call('/epc/allocate', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ itemId: crypto.randomUUID(), count: 10 }),
+  })
+  log('unknown item', `${unknown.status} ${unknown.body?.error?.code}`)
+}
+
+console.log('\n=== device heartbeat ===')
+{
+  const beat = await call('/devices/heartbeat', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ appVersion: '1.0.1', pendingCount: 4, batteryPercent: 61 }),
+  })
+  log('POST /devices/heartbeat', beat.status)
+  log('  device recognised', beat.body?.deviceId === DEVICE_ID)
+  log('  pending reported back', beat.body?.pendingCount)
+}
+
+console.log('\n=== traceability ===')
+{
+  const pulled = await call('/sync/pull', { headers: auth(accessToken) })
+  const batchId = pulled.body.batches?.[0]?.id
+  const unitId = pulled.body.serialUnits?.[0]?.id
+
+  const trace = await call(`/trace/batch/${batchId}`, { headers: auth(accessToken) })
+  log('GET /trace/batch/:id', trace.status)
+  log('  batch', trace.body?.batch?.batchNo)
+  log('  on hand', trace.body?.batch?.onHand)
+  log('  expiry state', trace.body?.batch?.expiryState)
+  log('  locations holding it', trace.body?.locations?.length)
+  log('  movements', trace.body?.movements?.length)
+
+  const missing = await call(`/trace/batch/${crypto.randomUUID()}`, { headers: auth(accessToken) })
+  log('unknown batch', `${missing.status} ${missing.body?.error?.code}`)
+
+  const unit = await call(`/serials/${unitId}/history`, { headers: auth(accessToken) })
+  log('GET /serials/:id/history', unit.status)
+  log('  serial', unit.body?.unit?.serialNo)
+  log('  history entries', unit.body?.history?.length)
+  log('  first entry is a receipt', unit.body?.history?.[0]?.type)
+}
+
+console.log('\n=== count lifecycle ===')
+{
+  const pulled = await call('/sync/pull', { headers: auth(accessToken) })
+  const siteId = signIn.body.sites[0].id
+  // Driven from the stock, not the location list: the first location is a
+  // receiving dock that holds nothing, and counting an empty bin proves nothing.
+  const level = pulled.body.stockLevels.find((l) => l.quantity > 1)
+  const location = pulled.body.locations.find((l) => l.id === level.locationId)
+
+  const sessionId = crypto.randomUUID()
+  const start = await call('/counts', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ id: sessionId, siteId, locationId: location.id, method: 'MANUAL' }),
+  })
+  log('POST /counts', `${start.status} ${start.body?.docNo}`)
+
+  const retried = await call('/counts', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ id: sessionId, siteId, locationId: location.id, method: 'MANUAL' }),
+  })
+  log('retried start is idempotent', retried.body?.docNo === start.body?.docNo)
+
+  // A count is BLIND over the whole location, so a partial submission proposes
+  // writing off everything it omits. Counting the whole bin, one line short.
+  const atLocation = pulled.body.stockLevels.filter(
+    (l) => l.locationId === location.id && l.quantity > 0,
+  )
+  const submitted = await call(`/counts/${sessionId}/submit`, {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({
+      counted: atLocation.map((l) => ({
+        itemId: l.itemId,
+        batchId: l.batchId,
+        quantity: l.itemId === level.itemId && l.batchId === level.batchId
+          ? l.quantity - 1
+          : l.quantity,
+      })),
+    }),
+  })
+  log('POST /counts/:id/submit', submitted.status)
+  log('  status', submitted.body?.status)
+  log('  says nothing has changed yet', JSON.stringify(submitted.body?.message?.slice(0, 26)))
+  log('  lines reconciled', submitted.body?.summary?.lines?.length)
+  log('  short / over / missing', [
+    submitted.body?.summary?.short,
+    submitted.body?.summary?.over,
+    submitted.body?.summary?.missing,
+  ].join(' / '))
+  log('  net units', submitted.body?.summary?.netUnits)
+
+  // WADR-008: submitting must not touch stock. If this number moved, approval
+  // is decorative and the supervisor gate means nothing.
+  const afterSubmit = await call('/sync/pull', { headers: auth(accessToken) })
+  const stillThere = afterSubmit.body.stockLevels.find(
+    (l) => l.itemId === level.itemId && l.locationId === level.locationId,
+  )
+  log('stock unchanged by submit', stillThere?.quantity === level.quantity)
+
+  const refused = await call(`/counts/${sessionId}/approve`, {
+    method: 'POST',
+    headers: auth(accessToken),
+  })
+  log('operator approving own count', `${refused.status} ${refused.body?.error?.code}`)
+
+  const supervisor = await call('/auth/token', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: 'supervisor@inventory.local',
+      password: 'demo1234',
+      mode: 'DEMO',
+    }),
+  })
+  const approved = await call(`/counts/${sessionId}/approve`, {
+    method: 'POST',
+    headers: auth(supervisor.body.accessToken),
+  })
+  log('supervisor approving', `${approved.status} ${approved.body?.status}`)
+  log('  postings', approved.body?.postings)
+  log('  one posting per variance', approved.body?.postings === 1)
+
+  const afterApprove = await call('/sync/pull', { headers: auth(accessToken) })
+  const corrected = afterApprove.body.stockLevels.find(
+    (l) => l.itemId === level.itemId && l.locationId === level.locationId,
+  )
+  log('stock corrected by approval', corrected?.quantity === level.quantity - 1)
+
+  const listed = await call('/counts?status=APPROVED', { headers: auth(accessToken) })
+  log('GET /counts?status=APPROVED', `${listed.status} ${listed.body?.sessions?.length} session(s)`)
+
+  // And a count that scanned nothing — the shape that would write off the whole
+  // bin. It must be reported as missing rather than short, and rejecting it must
+  // leave stock exactly where it was.
+  const rejectedId = crypto.randomUUID()
+  await call('/counts', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ id: rejectedId, siteId, locationId: location.id, method: 'MANUAL' }),
+  })
+  const empty = await call(`/counts/${rejectedId}/submit`, {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ counted: [] }),
+  })
+  log('uncounted bin flagged as missing', empty.body?.summary?.missing === empty.body?.summary?.lines?.length)
+  const rejected = await call(`/counts/${rejectedId}/reject`, {
+    method: 'POST',
+    headers: auth(supervisor.body.accessToken),
+    body: JSON.stringify({ note: 'Counted the wrong aisle.' }),
+  })
+  log('supervisor rejecting', `${rejected.status} ${rejected.body?.status}`)
+
+  const afterReject = await call('/sync/pull', { headers: auth(accessToken) })
+  const untouched = afterReject.body.stockLevels.find(
+    (l) => l.itemId === level.itemId && l.locationId === level.locationId,
+  )
+  log('stock untouched by rejection', untouched?.quantity === corrected?.quantity)
+}
+
 console.log('\n=== refresh rotation ===')
 {
   const rotated = await call('/auth/refresh', {
