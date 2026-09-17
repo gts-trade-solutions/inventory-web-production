@@ -19,7 +19,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "verify": "npm run typecheck && npm run lint && npm test"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

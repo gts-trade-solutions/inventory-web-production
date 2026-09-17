@@ -16,7 +16,7 @@ import type { Db } from '@/lib/db'
  * Reference: docs/ARCHITECTURE.md §4.4
  */
 
-const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL_DEMO })
+const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL_TEST })
 
 /**
  * Callers always go through `withDeadlockRetry`, exactly as the movement service

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { LocationZone, PrismaClient, TrackingMode, UserRole } from '@prisma/client'
 
 /**
- * A disposable warehouse in the DEMO database, for integration tests.
+ * A disposable warehouse in the TEST database, for integration tests.
  *
  * Integration tests run against real MySQL because the properties under test —
  * row locking, transaction isolation, atomic upserts, deadlock behaviour — are
@@ -10,7 +10,7 @@ import { LocationZone, PrismaClient, TrackingMode, UserRole } from '@prisma/clie
  * our mock behaves as we imagined MySQL behaves, which is worth nothing.
  */
 
-export const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL_DEMO })
+export const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL_TEST })
 
 export interface Warehouse {
   siteId: string
@@ -76,11 +76,15 @@ export async function seedWarehouse(): Promise<Warehouse> {
     },
   })
 
-  const reason = await prisma.reasonCode.upsert({
-    where: { code: 'TEST_ADJ' },
-    update: {},
-    create: { id: randomUUID(), code: 'TEST_ADJ', label: 'Test adjustment', appliesTo: 'ADJUST' },
-  })
+  // COUNT_VAR is not optional: approveCount() refuses to post without it. The
+  // count tests used to rely on it existing in the demo database, which meant
+  // they were passing for a reason they never declared — and would have failed
+  // on a fresh CI database.
+  const [reason] = await Promise.all([
+    upsertReason('TEST_ADJ', 'Test adjustment', 'ADJUST'),
+    upsertReason('COUNT_VAR', 'Cycle count variance', 'ADJUST'),
+    upsertReason('TEST_SCRAP', 'Test scrap', 'SCRAP'),
+  ])
 
   const [locationA, locationB] = [
     await upsertLocation(site.id, 'A-01', 'Aisle A'),
@@ -129,6 +133,14 @@ export async function seedWarehouse(): Promise<Warehouse> {
     soonBatchId: soon.id,
     reasonCodeId: reason.id,
   }
+}
+
+function upsertReason(code: string, label: string, appliesTo: 'ADJUST' | 'SCRAP') {
+  return prisma.reasonCode.upsert({
+    where: { code },
+    update: { active: true },
+    create: { id: randomUUID(), code, label, appliesTo },
+  })
 }
 
 function upsertLocation(siteId: string, code: string, name: string) {

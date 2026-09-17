@@ -37,6 +37,8 @@ jobs:
     env:
       DATABASE_URL: mysql://root:ci_root@127.0.0.1:3306/inventory
       DATABASE_URL_DEMO: mysql://root:ci_root@127.0.0.1:3306/inventory_demo
+      # Integration tests truncate, so they get their own database.
+      DATABASE_URL_TEST: mysql://root:ci_root@127.0.0.1:3306/inventory_test
       AUTH_SECRET: ci-placeholder-secret-not-used-for-anything
       JWT_SIGNING_KEY: ci-placeholder-jwt-key-not-used-for-anything
       DEMO_MODE_ENABLED: 'true'
@@ -52,10 +54,11 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Create the demo database
+      - name: Create the demo and test databases
         run: |
           mysql -h 127.0.0.1 -uroot -pci_root \
-            -e "CREATE DATABASE IF NOT EXISTS inventory_demo CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+            -e "CREATE DATABASE IF NOT EXISTS inventory_demo CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+                CREATE DATABASE IF NOT EXISTS inventory_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -67,6 +70,11 @@ jobs:
         run: npx prisma migrate deploy
         env:
           DATABASE_URL: ${{ env.DATABASE_URL_DEMO }}
+
+      - name: Apply migrations — test
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL_TEST }}
 
       - name: Migration drift check
         # Fails if schema.prisma has changed without a matching migration, which
