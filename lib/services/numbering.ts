@@ -55,52 +55,65 @@ export function currentPeriod(now: Date = new Date()): string {
  * Allocates the next document number for `key`, atomically.
  *
  * MySQL's LAST_INSERT_ID(expr) trick makes the read-and-increment a single
- * statement: the UPDATE takes a row lock, stores the new value, and makes it
- * retrievable per-connection. Two concurrent callers cannot receive the same
- * number, and no SELECT ... FOR UPDATE round trip is needed.
+ * statement, taking one exclusive row lock. The row is then read back inside the
+ * same transaction, which sees our own uncommitted increment while the lock
+ * keeps everyone else out.
  *
- * MUST be called inside the same transaction as the row it numbers. If that
- * transaction rolls back, the allocation rolls back with it — which is what
- * keeps the sequence gapless.
+ * MUST be called inside the same transaction as the row it numbers, for two
+ * reasons: the read-back is only safe while we hold the lock, and a rollback
+ * must release the number so the sequence stays gapless.
+ *
+ * The UPDATE comes FIRST and the INSERT only runs when the row does not yet
+ * exist. The obvious ordering — INSERT IGNORE, then UPDATE — deadlocks under
+ * concurrency: INSERT IGNORE takes a shared lock while checking for a duplicate,
+ * and the UPDATE then has to upgrade it to exclusive. Two transactions doing
+ * that at once each hold a shared lock and wait for the other to release it.
+ * Verified in tests/numbering.integration.test.ts.
  */
 export async function allocateDocNo(db: Db, key: DocKey, now: Date = new Date()): Promise<string> {
   const period = currentPeriod(now)
   const prefix = DOC_PREFIXES[key]
 
-  // Create the row for a new year on first use. INSERT IGNORE so two concurrent
-  // first-of-the-year callers don't collide on the primary key.
-  await db.$executeRaw`
-    INSERT IGNORE INTO number_sequences (\`key\`, period, prefix, nextValue, padding, updatedAt)
-    VALUES (${key}, ${period}, ${prefix}, 1, 6, NOW(6))
-  `
-
-  const updated = await db.$executeRaw`
+  // Hot path: the sequence row already exists, so this is a single statement
+  // taking a single exclusive lock.
+  let updated = await db.$executeRaw`
     UPDATE number_sequences
-       SET nextValue = LAST_INSERT_ID(nextValue + 1), updatedAt = NOW(6)
+       SET nextValue = nextValue + 1, updatedAt = NOW(6)
      WHERE \`key\` = ${key} AND period = ${period}
   `
+
+  if (updated === 0) {
+    // First document of this period. INSERT IGNORE so two concurrent callers
+    // racing to create the row don't collide on the primary key; whichever
+    // loses simply proceeds to the UPDATE below.
+    await db.$executeRaw`
+      INSERT IGNORE INTO number_sequences (\`key\`, period, prefix, nextValue, padding, updatedAt)
+      VALUES (${key}, ${period}, ${prefix}, 1, 6, NOW(6))
+    `
+
+    updated = await db.$executeRaw`
+      UPDATE number_sequences
+         SET nextValue = nextValue + 1, updatedAt = NOW(6)
+       WHERE \`key\` = ${key} AND period = ${period}
+    `
+  }
 
   if (updated !== 1) {
     throw new Error(`Failed to allocate a document number for ${key}/${period}.`)
   }
 
-  // LAST_INSERT_ID() returned the value AFTER incrementing, so the number this
-  // caller owns is one less.
-  const [row] = await db.$queryRaw<Array<{ allocated: bigint }>>`
-    SELECT LAST_INSERT_ID() AS allocated
+  // Safe because we hold the exclusive lock on this row for the rest of the
+  // transaction: nobody else can change it between the UPDATE and this read.
+  const [row] = await db.$queryRaw<Array<{ nextValue: number; padding: number }>>`
+    SELECT nextValue, padding FROM number_sequences
+     WHERE \`key\` = ${key} AND period = ${period}
   `
   if (!row) {
     throw new Error(`Failed to read back the allocated document number for ${key}/${period}.`)
   }
 
-  const sequence = Number(row.allocated) - 1
-
-  const [config] = await db.$queryRaw<Array<{ padding: number }>>`
-    SELECT padding FROM number_sequences WHERE \`key\` = ${key} AND period = ${period}
-  `
-  const padding = config?.padding ?? 6
-
-  return formatDocNo(prefix, period, sequence, padding)
+  // nextValue now points at the NEXT document, so the one we own is one less.
+  return formatDocNo(prefix, period, row.nextValue - 1, row.padding)
 }
 
 export function formatDocNo(prefix: string, period: string, sequence: number, padding = 6): string {

@@ -5,6 +5,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['lib/**/*.test.ts', 'tests/**/*.test.ts'],
+    setupFiles: ['./tests/setup.ts'],
+    // Integration tests share one database. Running files in parallel would make
+    // them fight over the same rows and fail for reasons that have nothing to do
+    // with the code.
+    fileParallelism: false,
     coverage: {
       provider: 'v8',
       // lib/domain holds the ledger rules. Everything else is orchestration and
@@ -16,6 +21,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./', import.meta.url)),
+      'server-only': fileURLToPath(new URL('./tests/stubs/server-only.ts', import.meta.url)),
     },
   },
 })

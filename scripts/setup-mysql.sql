@@ -5,14 +5,19 @@
 -- The two databases are never joined; the mode resolver picks one per request
 -- (ARCHITECTURE §8, WADR-023/024).
 --
--- Run as root, once per environment:
---   "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p < scripts/setup-mysql.sql
+-- Run as root, once per environment.
+--
+--   PowerShell (note: PowerShell has no "<" input redirection, so pipe instead):
+--     Get-Content scripts\setup-mysql.sql | & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p
+--
+--   Git Bash / Linux / macOS:
+--     mysql -u root -p < scripts/setup-mysql.sql
 --
 -- CHANGE THE PASSWORD BELOW BEFORE RUNNING, then put the same value in
--- .env.local (URL-encode any special characters there).
+-- .env (URL-encode any special characters there).
 -- ---------------------------------------------------------------------------
 
-SET @app_password = 'CHANGE_ME';
+SET @app_password = 'root';
 
 -- --- Databases -------------------------------------------------------------
 -- utf8mb4 so item names, notes and operator input handle any script or emoji.

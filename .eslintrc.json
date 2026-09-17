@@ -7,14 +7,25 @@
     ],
     "@typescript-eslint/no-explicit-any": "error",
     "@typescript-eslint/consistent-type-imports": ["error", { "prefer": "type-imports" }],
-    "no-restricted-imports": [
+
+    "no-restricted-imports": "off",
+    "@typescript-eslint/no-restricted-imports": [
       "error",
       {
+        "paths": [
+          {
+            "name": "@prisma/client",
+            "importNames": ["PrismaClient"],
+            "message": "Resolve the Prisma client through lib/mode.ts (dbFor) so LIVE and DEMO stay isolated (WADR-024).",
+            "allowTypeImports": true
+          }
+        ],
         "patterns": [
           {
-            "group": ["@/lib/db", "@prisma/client"],
-            "importNames": ["PrismaClient"],
-            "message": "Resolve the Prisma client through lib/mode.ts so LIVE and DEMO stay isolated (WADR-024)."
+            "group": ["@/lib/db"],
+            "importNames": ["livePrisma", "demoPrisma"],
+            "message": "Go through dbFor(mode) in lib/mode.ts rather than reaching for a database directly (WADR-024).",
+            "allowTypeImports": true
           }
         ]
       }
@@ -22,13 +33,13 @@
   },
   "overrides": [
     {
-      "files": ["lib/db.ts", "lib/mode.ts", "prisma/**/*.ts", "scripts/**/*.ts"],
-      "rules": { "no-restricted-imports": "off" }
+      "files": ["lib/db.ts", "lib/mode.ts", "prisma/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
+      "rules": { "@typescript-eslint/no-restricted-imports": "off" }
     },
     {
       "files": ["lib/domain/**/*.ts"],
       "rules": {
-        "no-restricted-imports": [
+        "@typescript-eslint/no-restricted-imports": [
           "error",
           {
             "patterns": [
@@ -38,10 +49,13 @@
                   "next/*",
                   "@prisma/client",
                   "react",
+                  "server-only",
                   "@/lib/db",
+                  "@/lib/services",
                   "@/lib/services/*"
                 ],
-                "message": "lib/domain must stay pure: plain data in, plain results out (ARCHITECTURE §3)."
+                "message": "lib/domain must stay pure: plain data in, plain results out, no framework and no database (ARCHITECTURE §3). Define the type here and let a service map to it.",
+                "allowTypeImports": false
               }
             ]
           }
