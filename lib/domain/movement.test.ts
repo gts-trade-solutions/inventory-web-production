@@ -906,3 +906,89 @@ describe('proposeBatchFefo', () => {
     expect(proposeBatchFefo([], 1, NOW)).toBeNull()
   })
 })
+
+describe('COUNT postings', () => {
+  // A count correction must be distinguishable from a manual adjustment in the
+  // ledger. They carry very different weight in a stock-accuracy report, and
+  // only one of them is evidence. This was recorded as ADJUST until a browser
+  // run showed /movements?type=count returning nothing after an approval.
+  it('records MovementType.COUNT, not ADJUST', () => {
+    const movement = expectPlanned(
+      plan(
+        { kind: 'COUNT', itemId: TAPE.id, locationId: AISLE_A.id, countedQuantity: 8 },
+        context({ ledger: [receipt(10)] }),
+      ),
+    )
+
+    expect(movement.type).toBe(MovementType.COUNT)
+  })
+
+  it('derives the difference from the counted total, like an adjustment', () => {
+    const short = expectPlanned(
+      plan(
+        { kind: 'COUNT', itemId: TAPE.id, locationId: AISLE_A.id, countedQuantity: 8 },
+        context({ ledger: [receipt(10)] }),
+      ),
+    )
+    expect(short.quantity).toBe(2)
+    expect(short.fromLocationId).toBe(AISLE_A.id)
+
+    const over = expectPlanned(
+      plan(
+        { kind: 'COUNT', itemId: TAPE.id, locationId: AISLE_A.id, countedQuantity: 13 },
+        context({ ledger: [receipt(10)] }),
+      ),
+    )
+    expect(over.quantity).toBe(3)
+    expect(over.toLocationId).toBe(AISLE_A.id)
+  })
+
+  it('needs no reason code — the count session is the justification', () => {
+    const movement = expectPlanned(
+      plan(
+        { kind: 'COUNT', itemId: TAPE.id, locationId: AISLE_A.id, countedQuantity: 8 },
+        context({ ledger: [receipt(10)] }),
+      ),
+    )
+
+    expect(movement.reasonCodeId).toBeNull()
+  })
+
+  it('posts nothing when the shelf already matches', () => {
+    // Stock can move between submitting a count and approving it. Recomputing
+    // against current stock is the point; a no-op line is simply skipped.
+    expectRejected(
+      plan(
+        { kind: 'COUNT', itemId: TAPE.id, locationId: AISLE_A.id, countedQuantity: 10 },
+        context({ ledger: [receipt(10)] }),
+      ),
+      MovementErrorCode.NO_CHANGE,
+    )
+  })
+
+  it('counts at the batch grain', () => {
+    const movement = expectPlanned(
+      plan(
+        {
+          kind: 'COUNT',
+          itemId: ADHESIVE.id,
+          locationId: AISLE_A.id,
+          batchId: FRESH_BATCH.id,
+          countedQuantity: 7,
+        },
+        context({
+          item: ADHESIVE,
+          batches: [FRESH_BATCH, SOON_BATCH],
+          ledger: [
+            receipt(10, AISLE_A, ADHESIVE, FRESH_BATCH.id),
+            receipt(5, AISLE_A, ADHESIVE, SOON_BATCH.id),
+          ],
+        }),
+      ),
+    )
+
+    // Only the counted batch moves; the other is untouched.
+    expect(movement.quantity).toBe(3)
+    expect(movement.batchId).toBe(FRESH_BATCH.id)
+  })
+})

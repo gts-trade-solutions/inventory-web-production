@@ -132,6 +132,22 @@ describe('approving a count', () => {
     expect(posted.reasonCodeId).not.toBeNull()
   })
 
+  it('records postings as COUNT movements, not ADJUST', async () => {
+    // A count correction has to be distinguishable from a typed adjustment: they
+    // carry different weight in a stock-accuracy report, and only one is
+    // evidence. This shipped as ADJUST until a browser run showed the ledger
+    // filter for COUNT returning nothing after an approval.
+    await receive(wh.tapeId, wh.locationA, 10)
+    const { sessionId } = await startAt()
+    await submitCount(prisma, sessionId, [{ itemId: wh.tapeId, batchId: null, quantity: 7 }])
+    await approveCount(prisma, sessionId, actor())
+
+    const posted = await prisma.movement.findFirstOrThrow({ where: { countSessionId: sessionId } })
+
+    expect(posted.type).toBe(MovementType.COUNT)
+    expect(await prisma.movement.count({ where: { type: MovementType.ADJUST } })).toBe(0)
+  })
+
   it('posts nothing when the count matched', async () => {
     await receive(wh.tapeId, wh.locationA, 10)
     const { sessionId } = await startAt()

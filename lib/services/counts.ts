@@ -281,11 +281,11 @@ export async function approveCount(
             countSessionId: sessionId,
             source: MovementSource.WEB,
             action: {
-              kind: 'ADJUST',
+              kind: 'COUNT',
               itemId: posting.itemId,
               locationId: session.locationId,
               batchId: posting.batchId,
-              // ADJUST takes the COUNTED total and derives the difference itself,
+              // COUNT takes the COUNTED total and derives the difference itself,
               // rather than trusting a difference computed a moment ago against
               // stock that may have moved since.
               countedQuantity: countedTotalFor(lines, posting.itemId, posting.batchId),

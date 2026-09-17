@@ -420,6 +420,7 @@ function locationsTouchedBy(action: StockAction): string[] {
     case 'MOVE':
       return [action.fromLocationId, action.toLocationId]
     case 'ADJUST':
+    case 'COUNT':
       return [action.locationId]
   }
 }

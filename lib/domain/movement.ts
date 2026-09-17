@@ -67,6 +67,24 @@ export interface AdjustAction extends BaseAction {
   reasonCodeId: string
 }
 
+/**
+ * A correction posted by an approved cycle count.
+ *
+ * Validates exactly like ADJUST — it takes the COUNTED total and derives the
+ * difference against stock as it is now — but records MovementType.COUNT, so the
+ * ledger can tell "we counted the shelf" apart from "somebody typed a
+ * correction". Those carry very different weight in a stock-accuracy report, and
+ * only one of them is evidence.
+ *
+ * No reason code is required: the count session is the justification, and it is
+ * linked on the movement.
+ */
+export interface CountAction extends BaseAction {
+  kind: 'COUNT'
+  locationId: string
+  countedQuantity: number
+}
+
 export interface ScrapAction extends BaseAction {
   kind: 'SCRAP'
   fromLocationId: string
@@ -74,7 +92,8 @@ export interface ScrapAction extends BaseAction {
   reasonCodeId: string
 }
 
-export type StockAction = ReceiveAction | IssueAction | MoveAction | AdjustAction | ScrapAction
+export type StockAction =
+  ReceiveAction | IssueAction | MoveAction | AdjustAction | CountAction | ScrapAction
 
 // ---------------------------------------------------------------------------
 // What the domain needs to know to decide
@@ -173,6 +192,8 @@ export function planMovement(action: StockAction, context: MovementContext): Mov
       return planMove(action, context)
     case 'ADJUST':
       return planAdjust(action, context)
+    case 'COUNT':
+      return planCount(action, context)
     case 'SCRAP':
       return planScrap(action, context)
   }
@@ -293,6 +314,27 @@ function planAdjust(action: AdjustAction, context: MovementContext): MovementDec
     toLocationId: difference > 0 ? action.locationId : null,
     serialUnitIds: [],
   })
+}
+
+function planCount(action: CountAction, context: MovementContext): MovementDecision {
+  // The arithmetic is an adjustment's; only the label and the justification
+  // differ. A placeholder reason satisfies planAdjust's check and is then
+  // dropped, because the count session is what justifies this movement.
+  const decision = planAdjust(
+    { ...action, kind: 'ADJUST', reasonCodeId: action.reasonCodeId ?? 'cycle-count' },
+    context,
+  )
+
+  if (!decision.ok) return decision
+
+  return {
+    ok: true,
+    movement: {
+      ...decision.movement,
+      type: MovementType.COUNT,
+      reasonCodeId: action.reasonCodeId?.trim() || null,
+    },
+  }
 }
 
 function planScrap(action: ScrapAction, context: MovementContext): MovementDecision {
