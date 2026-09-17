@@ -2,8 +2,10 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, MapPin } from 'lucide-react'
-import { requireUser } from '@/lib/auth/guards'
+import { UserRole } from '@prisma/client'
+import { requireUser, roleAtLeast } from '@/lib/auth/guards'
 import { traceBatch } from '@/lib/services/traceability'
+import { BatchStatusForm } from './batch-status-form'
 import { PageHeader } from '@/components/page-header'
 import { EmptyState } from '@/components/empty-state'
 import { ExpiryBadge } from '@/components/expiry-badge'
@@ -39,6 +41,7 @@ export default async function BatchDetailPage({
   if (!trace) notFound()
 
   const { batch, locations, movements, units } = trace
+  const canQuarantine = roleAtLeast(user.role, UserRole.SUPERVISOR)
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -75,6 +78,17 @@ export default async function BatchDetailPage({
           <Badge variant="outline">View item</Badge>
         </Link>
       </div>
+
+      {canQuarantine && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Supervisor actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <BatchStatusForm batchId={batch.id} batchNo={batch.batchNo} status={batch.status} />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-3">

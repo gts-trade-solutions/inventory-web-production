@@ -2,13 +2,14 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { TrackingMode } from '@prisma/client'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
 import { requireUser } from '@/lib/auth/guards'
 import { itemStock, listBatches } from '@/lib/services/traceability'
 import { PageHeader } from '@/components/page-header'
 import { EmptyState } from '@/components/empty-state'
 import { ExpiryBadge } from '@/components/expiry-badge'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -109,16 +110,24 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ ite
         title={item.name}
         description={`${item.sku} · ${item.category?.name ?? 'Uncategorised'}`}
         actions={
-          <div className="text-right">
-            <p className="tabular text-2xl font-semibold">{onHand.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">
-              {item.unit} on hand
-              {low && (
-                <Badge variant="warn" className="ml-2">
-                  Low
-                </Badge>
-              )}
-            </p>
+          <div className="flex items-center gap-4">
+            <Button asChild>
+              <Link href={`/movements/new?item=${item.id}`}>
+                <Plus />
+                Record movement
+              </Link>
+            </Button>
+            <div className="text-right">
+              <p className="tabular text-2xl font-semibold">{onHand.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">
+                {item.unit} on hand
+                {low && (
+                  <Badge variant="warn" className="ml-2">
+                    Low
+                  </Badge>
+                )}
+              </p>
+            </div>
           </div>
         }
       />
