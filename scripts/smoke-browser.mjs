@@ -101,6 +101,7 @@ await visit('/inventory')
 await visit('/batches')
 await visit('/serials')
 await visit('/movements')
+await visit('/scan')
 
 // Follow real links rather than hard-coded ids, so the test breaks if the list
 // pages stop linking anywhere.

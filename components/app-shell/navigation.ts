@@ -44,7 +44,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'Operations',
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { href: '/scan', label: 'Scan', icon: ScanLine, comingSoon: true },
+      { href: '/scan', label: 'Scan', icon: ScanLine },
       { href: '/inventory', label: 'Inventory', icon: Package },
       { href: '/movements', label: 'Movements', icon: ArrowLeftRight },
       { href: '/counts', label: 'Cycle counts', icon: ClipboardCheck, comingSoon: true },

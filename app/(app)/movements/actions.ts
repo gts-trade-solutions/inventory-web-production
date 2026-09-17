@@ -160,9 +160,19 @@ function toStockAction(input: z.infer<(typeof schemas)[keyof typeof schemas]>): 
 
   switch (input.kind) {
     case 'RECEIVE':
-      return { ...shared, kind: 'RECEIVE', toLocationId: input.toLocationId, quantity: input.quantity }
+      return {
+        ...shared,
+        kind: 'RECEIVE',
+        toLocationId: input.toLocationId,
+        quantity: input.quantity,
+      }
     case 'ISSUE':
-      return { ...shared, kind: 'ISSUE', fromLocationId: input.fromLocationId, quantity: input.quantity }
+      return {
+        ...shared,
+        kind: 'ISSUE',
+        fromLocationId: input.fromLocationId,
+        quantity: input.quantity,
+      }
     case 'MOVE':
       return {
         ...shared,

@@ -48,7 +48,13 @@ export interface MovementFormData {
   /** The FEFO proposal for the given location and quantity, if one fits. */
   proposedBatchId: string | null
   serials: SerialOption[]
-  reasonCodes: Array<{ id: string; code: string; label: string; appliesTo: string; requiresNote: boolean }>
+  reasonCodes: Array<{
+    id: string
+    code: string
+    label: string
+    appliesTo: string
+    requiresNote: boolean
+  }>
 }
 
 export async function loadMovementForm(
