@@ -82,79 +82,40 @@ export async function seedWarehouse(): Promise<Warehouse> {
     create: { id: randomUUID(), code: 'TEST_ADJ', label: 'Test adjustment', appliesTo: 'ADJUST' },
   })
 
-  const [locationA, locationB] = await Promise.all([
-    prisma.location.create({
-      data: {
-        id: randomUUID(),
-        siteId: site.id,
-        code: 'A-01',
-        name: 'Aisle A',
-        zone: LocationZone.STORAGE,
-      },
-    }),
-    prisma.location.create({
-      data: {
-        id: randomUUID(),
-        siteId: site.id,
-        code: 'B-01',
-        name: 'Aisle B',
-        zone: LocationZone.STORAGE,
-      },
-    }),
-  ])
+  const [locationA, locationB] = [
+    await upsertLocation(site.id, 'A-01', 'Aisle A'),
+    await upsertLocation(site.id, 'B-01', 'Aisle B'),
+  ]
 
-  const tape = await prisma.item.create({
-    data: {
-      id: randomUUID(),
-      sku: 'PKG-1004',
-      name: 'Packing tape',
-      unit: 'rolls',
-      reorderPoint: 10,
-      trackingMode: TrackingMode.NONE,
-    },
+  const tape = await upsertItem({
+    sku: 'PKG-1004',
+    name: 'Packing tape',
+    unit: 'rolls',
+    reorderPoint: 10,
+    trackingMode: TrackingMode.NONE,
   })
 
-  const adhesive = await prisma.item.create({
-    data: {
-      id: randomUUID(),
-      sku: 'CHM-2001',
-      name: 'Industrial adhesive',
-      unit: 'cans',
-      reorderPoint: 5,
-      trackingMode: TrackingMode.BATCH,
-      expiryRequired: true,
-    },
+  const adhesive = await upsertItem({
+    sku: 'CHM-2001',
+    name: 'Industrial adhesive',
+    unit: 'cans',
+    reorderPoint: 5,
+    trackingMode: TrackingMode.BATCH,
+    expiryRequired: true,
   })
 
-  const drill = await prisma.item.create({
-    data: {
-      id: randomUUID(),
-      sku: 'TLS-0015',
-      name: 'Cordless drill',
-      unit: 'pcs',
-      reorderPoint: 3,
-      trackingMode: TrackingMode.SERIAL,
-    },
+  const drill = await upsertItem({
+    sku: 'TLS-0015',
+    name: 'Cordless drill',
+    unit: 'pcs',
+    reorderPoint: 3,
+    trackingMode: TrackingMode.SERIAL,
   })
 
-  const [fresh, soon] = await Promise.all([
-    prisma.batch.create({
-      data: {
-        id: randomUUID(),
-        itemId: adhesive.id,
-        batchNo: 'LOT-FRESH',
-        expiryDate: new Date('2027-09-01'),
-      },
-    }),
-    prisma.batch.create({
-      data: {
-        id: randomUUID(),
-        itemId: adhesive.id,
-        batchNo: 'LOT-SOON',
-        expiryDate: new Date('2026-10-01'),
-      },
-    }),
-  ])
+  const [fresh, soon] = [
+    await upsertBatch(adhesive.id, 'LOT-FRESH', new Date('2027-09-01')),
+    await upsertBatch(adhesive.id, 'LOT-SOON', new Date('2026-10-01')),
+  ]
 
   return {
     siteId: site.id,
@@ -168,6 +129,37 @@ export async function seedWarehouse(): Promise<Warehouse> {
     soonBatchId: soon.id,
     reasonCodeId: reason.id,
   }
+}
+
+function upsertLocation(siteId: string, code: string, name: string) {
+  return prisma.location.upsert({
+    where: { siteId_code: { siteId, code } },
+    update: { deletedAt: null, active: true },
+    create: { id: randomUUID(), siteId, code, name, zone: LocationZone.STORAGE },
+  })
+}
+
+function upsertItem(data: {
+  sku: string
+  name: string
+  unit: string
+  reorderPoint: number
+  trackingMode: TrackingMode
+  expiryRequired?: boolean
+}) {
+  return prisma.item.upsert({
+    where: { sku: data.sku },
+    update: { deletedAt: null, active: true },
+    create: { id: randomUUID(), ...data },
+  })
+}
+
+function upsertBatch(itemId: string, batchNo: string, expiryDate: Date) {
+  return prisma.batch.upsert({
+    where: { itemId_batchNo: { itemId, batchNo } },
+    update: {},
+    create: { id: randomUUID(), itemId, batchNo, expiryDate },
+  })
 }
 
 /** Creates serial units already in stock at a location. */

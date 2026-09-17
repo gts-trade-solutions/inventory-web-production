@@ -45,7 +45,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/scan', label: 'Scan', icon: ScanLine, comingSoon: true },
-      { href: '/inventory', label: 'Inventory', icon: Package, comingSoon: true },
+      { href: '/inventory', label: 'Inventory', icon: Package },
       { href: '/movements', label: 'Movements', icon: ArrowLeftRight, comingSoon: true },
       { href: '/counts', label: 'Cycle counts', icon: ClipboardCheck, comingSoon: true },
     ],
@@ -53,8 +53,8 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Traceability',
     items: [
-      { href: '/batches', label: 'Batches & expiry', icon: Layers, comingSoon: true },
-      { href: '/serials', label: 'Serial units', icon: Boxes, comingSoon: true },
+      { href: '/batches', label: 'Batches & expiry', icon: Layers },
+      { href: '/serials', label: 'Serial units', icon: Boxes },
       { href: '/locations', label: 'Locations', icon: MapPin, comingSoon: true },
     ],
   },
