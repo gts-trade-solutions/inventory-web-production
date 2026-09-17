@@ -81,16 +81,23 @@ export async function recordMovement(
   actor: { userId: string | null },
   options: { acceptNegative?: boolean } = {},
 ): Promise<RecordOutcome> {
-  return withDeadlockRetry(prisma, (tx) => recordInTransaction(tx, input, actor, options), {
+  return withDeadlockRetry(prisma, (tx) => recordMovementInTx(tx, input, actor, options), {
     label: `record ${input.action.kind}`,
   })
 }
 
-async function recordInTransaction(
+/**
+ * Records a movement inside a transaction the CALLER already opened.
+ *
+ * Count approval needs this: every COUNT posting for a session must land in one
+ * transaction, so a half-approved count is impossible. The caller owns the
+ * retry-on-deadlock wrapper.
+ */
+export async function recordMovementInTx(
   tx: Db,
   input: RecordMovementInput,
   actor: { userId: string | null },
-  options: { acceptNegative?: boolean },
+  options: { acceptNegative?: boolean } = {},
 ): Promise<RecordOutcome> {
   const movementId = input.id ?? randomUUID()
   const { action } = input

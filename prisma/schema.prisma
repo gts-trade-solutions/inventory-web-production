@@ -294,7 +294,6 @@ model Batch {
   item        Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
   serialUnits SerialUnit[]
   movements   Movement[]
-  countLines  CountLine[]
   printJobs   PrintJob[]
 
   @@unique([itemId, batchNo])
@@ -498,7 +497,9 @@ model CountSession {
 model CountLine {
   sessionId String @db.Char(36)
   itemId    String @db.Char(36)
-  /// All-zero UUID sentinel for untracked items, as in StockLevel.
+  /// All-zero UUID sentinel for untracked items, exactly as in StockLevel —
+  /// and, for the same reason, with NO foreign key: the sentinel has no Batch
+  /// row, so a constraint here would reject every line for an untracked item.
   batchId   String @db.Char(36)
 
   expected Int
@@ -506,7 +507,6 @@ model CountLine {
 
   session CountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   item    Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  batch   Batch?       @relation(fields: [batchId], references: [id], onDelete: Restrict, map: "count_lines_batch_fk")
 
   @@id([sessionId, itemId, batchId])
   @@index([itemId])

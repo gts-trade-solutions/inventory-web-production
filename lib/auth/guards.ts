@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import { auth } from '@/auth'
 import { dbFor, type AppMode } from '@/lib/mode'
+import { ForbiddenError } from './errors'
 
 /**
  * Server-side access control.
@@ -94,15 +95,4 @@ export async function requireSite(siteId: string): Promise<AuthContext> {
   return user
 }
 
-export class ForbiddenError extends Error {
-  readonly code = 'FORBIDDEN'
-
-  constructor(
-    message: string,
-    readonly required: UserRole,
-    readonly actual: UserRole,
-  ) {
-    super(message)
-    this.name = 'ForbiddenError'
-  }
-}
+export { ForbiddenError }
