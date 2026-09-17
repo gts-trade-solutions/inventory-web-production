@@ -21,9 +21,11 @@ import { DEMO_ACCOUNTS } from '../lib/demo-accounts'
  * expired, one quarantined) and serial-tracked items with real SGTIN-96 EPCs.
  *
  * Deterministic, so every demo starts from the same state and a rehearsed script
- * stays true. The planted variances at the end are the point: a cycle count in
- * the demo finds something real, exactly as the mobile app's simulated warehouse
- * does (its ADR-011).
+ * stays true.
+ *
+ * It does NOT fake a count variance. A variance is a difference between the
+ * system and the shelf, and the shelf is not in the database — it appears when
+ * an operator counts and types a different number. See the note near the end.
  *
  * Writes to the DEMO database only. Refuses to touch anything else.
  *
@@ -670,19 +672,16 @@ async function main() {
     })
   }
 
-  // --- Planted variances -------------------------------------------------
-  // Each storage location starts two units short and one stray, so a cycle
-  // count in the demo finds something real (mobile ADR-011).
-  const planted = await prisma.stockLevel.findMany({
-    where: { locationId: { in: storage.map((code) => locations.get(code)!) } },
-    take: 4,
-  })
-  for (const level of planted) {
-    await prisma.$executeRaw`
-      UPDATE stock_levels SET quantity = quantity + 2
-       WHERE itemId = ${level.itemId} AND locationId = ${level.locationId} AND batchId = ${level.batchId}
-    `
-  }
+  // --- On planting variances -------------------------------------------
+  // An earlier version added 2 units directly to stock_levels here, to make a
+  // cycle count find something. That was wrong: it created rows the ledger does
+  // not explain, which is precisely the corruption findProjectionDrift() exists
+  // to detect — and it duly reported the demo database as broken.
+  //
+  // A real variance is a difference between the system and the SHELF, and the
+  // shelf is not in the database. It appears when an operator counts and enters
+  // a different number, or when the RFID simulator reports fewer tags than
+  // expected (Phase 6). Nothing here should fake it.
 
   console.log(`
 Demo database seeded.
@@ -692,7 +691,6 @@ Demo database seeded.
   batches      ${batchCount}
   serial units ${serialCount}
   movements    ${movements}
-  variances    ${planted.length} locations planted for cycle counting
 
 Sign in at /login with Demo selected:
   admin@inventory.local      / demo1234   (Administrator)
