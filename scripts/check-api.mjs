@@ -538,6 +538,58 @@ console.log('\n=== count lifecycle ===')
   log('stock untouched by rejection', untouched?.quantity === corrected?.quantity)
 }
 
+console.log('\n=== rate limiting ===')
+{
+  // Sign-in is the endpoint worth attacking: unthrottled it is an offer to try
+  // every password in a list. Driven until it actually refuses, because a
+  // limiter nobody has seen fire is decoration.
+  let refused = null
+  for (let attempt = 0; attempt < 25 && !refused; attempt++) {
+    const response = await call('/auth/token', {
+      method: 'POST',
+      // One account, hammered — which is what the per-account rule guards.
+      body: JSON.stringify({
+        email: 'admin@inventory.local',
+        password: `wrong-${attempt}`,
+        mode: 'DEMO',
+      }),
+    })
+    if (response.status === 429) refused = response
+  }
+
+  log('sign-in eventually refuses', refused ? `429 ${refused.body?.error?.code}` : 'NEVER REFUSED')
+  log('  says how long to wait', /try again in \d+ seconds/i.test(refused?.body?.error?.message ?? ''))
+
+  // The refusal must not distinguish a real account from an invented one, or
+  // the throttle becomes an account oracle.
+  const real = await call('/auth/token', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'admin@inventory.local', password: 'demo1234', mode: 'DEMO' }),
+  })
+  // Even the CORRECT password is refused once the account is throttled, which
+  // is the point: an attacker cannot tell a right guess from a wrong one.
+  log('the right password is refused too', real.status === 429)
+
+  // And another account is NOT affected — the per-account rule must not lock
+  // out the colleague who signs in next. A warehouse shares one NAT.
+  const neighbour = await call('/auth/token', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: 'supervisor@inventory.local',
+      password: 'demo1234',
+      mode: 'DEMO',
+    }),
+  })
+  log('a colleague can still sign in', neighbour.status)
+
+  // An authenticated caller is keyed by device, not by address — a warehouse
+  // shares one IP, and throttling by address would take the whole floor down
+  // with one chatty phone.
+  const stillWorks = await call('/sync/pull', { headers: auth(accessToken) })
+  log('authenticated traffic unaffected', stillWorks.status)
+  log('  allowance reported', stillWorks.headers.get('ratelimit-limit'))
+}
+
 console.log('\n=== recall pack and maintenance ===')
 {
   const pulled = await call('/sync/pull', { headers: auth(accessToken) })

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { publicRoute } from '@/lib/api/handler'
+import { RULES } from '@/lib/api/rate-limit'
 import { refreshTokens } from '@/lib/services/auth-tokens'
 import { dbFor, parseMode } from '@/lib/mode'
 
@@ -10,7 +11,7 @@ const schema = z.object({
   mode: z.enum(['LIVE', 'DEMO']).optional(),
 })
 
-export const POST = publicRoute({ schema }, async ({ body }) => {
+export const POST = publicRoute({ schema, rateLimit: RULES.refresh }, async ({ body }) => {
   const mode = parseMode(body.mode)
   return refreshTokens(dbFor(mode), body.refreshToken, mode)
 })

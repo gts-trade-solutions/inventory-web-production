@@ -8,6 +8,7 @@ import { dbFor, type AppMode } from '@/lib/mode'
 import { roleAtLeast } from '@/lib/auth/guards'
 import { bearerFrom, verifyAccessToken, type AccessClaims } from './jwt'
 import { ErrorCode, apiError, fromZodError, toApiError, type ApiErrorBody } from './errors'
+import { RULES, addressOf, limiter, rateLimitHeaders, type RateLimitRule } from './rate-limit'
 
 /**
  * The wrapper every /api/v1 route goes through.
@@ -34,6 +35,14 @@ export interface RouteOptions<TSchema extends z.ZodTypeAny | undefined> {
   /** Minimum role. Most endpoints are open to any signed-in user. */
   minimumRole?: UserRole
   schema?: TSchema
+  /**
+   * Overrides the standard rate limit.
+   *
+   * Almost nothing needs to: the standard allowance is deliberately generous,
+   * because a limiter that refuses a phone pushing a shift's work is a limiter
+   * that loses work.
+   */
+  rateLimit?: RateLimitRule
 }
 
 type Handler<TBody> = (context: ApiContext<TBody>) => Promise<unknown>
@@ -93,6 +102,25 @@ export function apiRoute<TSchema extends z.ZodTypeAny | undefined = undefined>(
         )
       }
 
+      const limit = limiter.check(
+        `api:${claims.deviceId ?? claims.userId}`,
+        options.rateLimit ?? RULES.standard,
+      )
+      if (!limit.ok) {
+        return fail(
+          {
+            error: {
+              code: ErrorCode.RATE_LIMITED,
+              message: `Too many requests. Try again in ${limit.retryAfter} seconds.`,
+              requestId,
+            },
+          },
+          429,
+          requestId,
+          rateLimitHeaders(limit),
+        )
+      }
+
       const db = dbFor(claims.mode)
 
       // A revoked device must stop working immediately, not when its 15-minute
@@ -145,14 +173,14 @@ export function apiRoute<TSchema extends z.ZodTypeAny | undefined = undefined>(
        * it worked and contains nothing.
        */
       if (result instanceof Response) {
-        for (const [header, value] of Object.entries(headersFor(requestId, claims.mode))) {
+        for (const [header, value] of Object.entries({ ...headersFor(requestId, claims.mode), ...rateLimitHeaders(limit) })) {
           if (!result.headers.has(header)) result.headers.set(header, value)
         }
         return result
       }
 
       return NextResponse.json(result ?? { ok: true }, {
-        headers: headersFor(requestId, claims.mode),
+        headers: { ...headersFor(requestId, claims.mode), ...rateLimitHeaders(limit) },
       })
     } catch (thrown) {
       const { body, status, logged } = toApiError(thrown, requestId)
@@ -169,7 +197,7 @@ export function apiRoute<TSchema extends z.ZodTypeAny | undefined = undefined>(
 
 /** An unauthenticated route, for health checks and token issuance. */
 export function publicRoute<TSchema extends z.ZodTypeAny | undefined = undefined>(
-  options: { schema?: TSchema },
+  options: { schema?: TSchema; rateLimit?: RateLimitRule },
   handler: (context: {
     body: TSchema extends z.ZodTypeAny ? z.infer<TSchema> : undefined
     requestId: string
@@ -180,6 +208,24 @@ export function publicRoute<TSchema extends z.ZodTypeAny | undefined = undefined
     const requestId = randomUUID()
 
     try {
+      const limit = limiter.check(`public:${addressOf(request)}`, options.rateLimit ?? RULES.signInPerAddress)
+      if (!limit.ok) {
+        // Deliberately the same wording as a wrong password: a throttle that
+        // says "slow down" only for real accounts is an account oracle.
+        return fail(
+          {
+            error: {
+              code: ErrorCode.RATE_LIMITED,
+              message: `Too many attempts. Try again in ${limit.retryAfter} seconds.`,
+              requestId,
+            },
+          },
+          429,
+          requestId,
+          rateLimitHeaders(limit),
+        )
+      }
+
       let body: unknown = undefined
       if (options.schema) {
         const parsed = options.schema.safeParse(await readJson(request))
@@ -218,8 +264,16 @@ function headersFor(requestId: string, mode: AppMode): Record<string, string> {
   }
 }
 
-function fail(body: ApiErrorBody, status: number, requestId: string): NextResponse {
-  return NextResponse.json(body, { status, headers: { 'X-Request-Id': requestId } })
+function fail(
+  body: ApiErrorBody,
+  status: number,
+  requestId: string,
+  extra: Record<string, string> = {},
+): NextResponse {
+  return NextResponse.json(body, {
+    status,
+    headers: { 'X-Request-Id': requestId, ...extra },
+  })
 }
 
 export { UserRole }
