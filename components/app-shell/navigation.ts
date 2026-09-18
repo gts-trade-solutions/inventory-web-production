@@ -10,6 +10,7 @@ import {
   Printer,
   ScanLine,
   ScrollText,
+  SlidersHorizontal,
   Users,
   Settings,
   Smartphone,
@@ -92,6 +93,12 @@ export const NAV_SECTIONS: NavSection[] = [
         href: '/admin/reason-codes',
         label: 'Reason codes',
         icon: Settings,
+        minimumRole: UserRole.ADMIN,
+      },
+      {
+        href: '/admin/settings',
+        label: 'Settings',
+        icon: SlidersHorizontal,
         minimumRole: UserRole.ADMIN,
       },
       {

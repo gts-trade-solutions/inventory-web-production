@@ -389,10 +389,17 @@ async function main() {
     await prisma.reasonCode.create({ data: { id: randomUUID(), ...reason } })
   }
 
+  // Only keys lib/services/settings.ts actually reads.
+  //
+  // The seed used to write 'allocation.fefo' and 'adjust.userLimit', which
+  // nothing anywhere consulted — rows that look like policy and are not. A
+  // setting that changes no behaviour is worse than none, because somebody sets
+  // it and believes it took effect. 'adjust.userLimit' is now
+  // 'adjust.maxQuantity' and is enforced on the write path; FEFO is proposed by
+  // the domain and has no switch, so it has none here either.
   for (const setting of [
     { key: 'expiry.issuePolicy', value: 'BLOCK' },
-    { key: 'allocation.fefo', value: true },
-    { key: 'adjust.userLimit', value: 100 },
+    { key: 'adjust.maxQuantity', value: 100 },
     { key: 'count.autoApproveThreshold', value: null },
   ]) {
     await prisma.setting.create({

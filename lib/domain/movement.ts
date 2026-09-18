@@ -142,6 +142,8 @@ export const MovementErrorCode = {
   UNKNOWN_SERIAL: 'UNKNOWN_SERIAL',
   SERIAL_NOT_AT_LOCATION: 'SERIAL_NOT_AT_LOCATION',
   SERIAL_ALREADY_ISSUED: 'SERIAL_ALREADY_ISSUED',
+  /** Beyond the per-adjustment cap an administrator set (Settings). */
+  ADJUSTMENT_TOO_LARGE: 'ADJUSTMENT_TOO_LARGE',
 } as const
 export type MovementErrorCode = (typeof MovementErrorCode)[keyof typeof MovementErrorCode]
 

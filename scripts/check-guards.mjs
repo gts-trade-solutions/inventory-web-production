@@ -68,7 +68,28 @@ for (const path of globSync('app/(app)/**/page.tsx', { cwd: ROOT, absolute: true
 for (const path of globSync('app/**/*.ts', { cwd: ROOT, absolute: true })) {
   const source = readFileSync(path, 'utf8')
   if (!source.startsWith("'use server'")) continue
+
   check(path, ACTION_GUARDS, 'a Server Action file')
+
+  /**
+   * A "use server" file may only export async functions.
+   *
+   * Types and interfaces are fine because they are erased. Anything else — a
+   * constant, a class, a plain function — makes Next throw AT RUNTIME, on a
+   * file that compiles, typechecks and lints cleanly. It has caught me out
+   * twice; both times the page 500'd and only the browser smoke test noticed.
+   */
+  const offenders = [...source.matchAll(/^export\s+(const|let|var|class|function)\s+(\w+)/gm)]
+    .filter((match) => match[1] !== 'function' || !/^export\s+function/.test(match[0]))
+    .map((match) => `${match[1]} ${match[2]}`)
+
+  if (offenders.length > 0) {
+    problems.push({
+      name: relative(path),
+      what: `a Server Action file exporting ${offenders.join(', ')}`,
+      guards: ['only async functions, types and interfaces may be exported'],
+    })
+  }
 }
 
 // --- API routes -----------------------------------------------------------

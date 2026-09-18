@@ -17,6 +17,7 @@ import {
 import { publishMovement } from '@/lib/events/publish'
 import { modeOf } from '@/lib/mode'
 import { allocateDocNo, docKeyForMovement } from './numbering'
+import { getSetting } from './settings'
 import { deterministicLockOrder, withDeadlockRetry } from './tx'
 
 /**
@@ -230,9 +231,14 @@ export async function recordMovementInTx(
     batches,
     serials,
     now: input.occurredAt ?? new Date(),
-    policy: { issuePolicy: await expiryPolicy(tx, input.siteId) },
+    policy: { issuePolicy: await getSetting(tx, 'expiry.issuePolicy', input.siteId) },
     allowExpiredOverride: input.allowExpiredOverride,
   })
+
+  // Checked against the LOCKED stock, like everything else in this transaction:
+  // a limit judged on a stale read is a limit that can be walked past.
+  const tooLarge = await assertWithinAdjustmentLimit(tx, action, input.siteId, stock)
+  if (tooLarge) return { status: 'REJECTED', error: tooLarge }
 
   if (!decision.ok) {
     // An offline push that would go negative is accepted and flagged rather
@@ -468,14 +474,39 @@ async function loadBatches(tx: Db, itemId: string): Promise<Batch[]> {
   return rows
 }
 
-async function expiryPolicy(tx: Db, siteId: string): Promise<'BLOCK' | 'WARN'> {
-  const setting = await tx.setting.findFirst({
-    where: { key: 'expiry.issuePolicy', siteId: { in: [siteId, ''] } },
-    // A site-specific row beats the global one, and '' sorts first.
-    orderBy: { siteId: 'desc' },
-  })
+/**
+ * The cap on a single adjustment.
+ *
+ * An adjustment is the one movement with no physical counterpart — nothing
+ * arrived, nothing left, the number simply changed. A typo in that box is the
+ * cheapest way to destroy stock accuracy, so an administrator can cap it.
+ *
+ * Applied to the DIFFERENCE, not the counted total: setting a shelf of 500 to
+ * 498 is a correction of two, and capping it at the total would block every
+ * adjustment in a busy bin.
+ */
+async function assertWithinAdjustmentLimit(
+  tx: Db,
+  action: StockAction,
+  siteId: string,
+  stock: StockLevel[],
+): Promise<MovementError | null> {
+  if (action.kind !== 'ADJUST') return null
 
-  return setting?.value === 'WARN' ? 'WARN' : 'BLOCK'
+  const limit = await getSetting(tx, 'adjust.maxQuantity', siteId)
+  if (limit === null) return null
+
+  const onHand = stock
+    .filter((level) => level.locationId === action.locationId)
+    .reduce((sum, level) => sum + level.quantity, 0)
+  const difference = Math.abs(action.countedQuantity - onHand)
+
+  if (difference <= limit) return null
+
+  return {
+    code: 'ADJUSTMENT_TOO_LARGE',
+    message: `That adjustment changes stock by ${difference}, and the limit is ${limit}. Count the location instead, or ask an administrator to raise the limit.`,
+  }
 }
 
 // ---------------------------------------------------------------------------

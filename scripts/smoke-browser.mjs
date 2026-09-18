@@ -362,6 +362,59 @@ if ((await selfTest.count()) === 0) {
   await visit('/admin/audit', 'admin · audit log')
   await visit('/admin/reason-codes', 'admin · reason codes')
 
+  // A setting is only worth having if it changes behaviour, so this sets one
+  // and then does the thing it governs.
+  current = 'admin · settings'
+  await visit('/admin/settings', 'admin · settings')
+
+  await page.fill('#adjust\\.maxQuantity', '5')
+  await page
+    .locator('form', { has: page.locator('#adjust\\.maxQuantity') })
+    .getByRole('button', { name: /save/i })
+    .click()
+  await page.getByText(/takes effect on the next movement/i).first().waitFor({ timeout: 30_000 })
+  console.log('  ✓     admin · capped adjustments at 5')
+
+  current = 'admin · settings take effect'
+  // An UNTRACKED item: adjusting a batch-tracked one needs a batch as well,
+  // and the point here is the cap, not the batch rules.
+  await page.goto(`${BASE}/inventory?tracking=none`, { waitUntil: 'networkidle' })
+  const plainItemHref = await firstRecordHref('/inventory/')
+  await visit(
+    `/movements/new?item=${plainItemHref?.split('/').pop()}&kind=adjust`,
+    'movement form · adjust (capped)',
+  )
+  // An adjustment sets the COUNTED total, not a delta — the field is named for
+  // what it is.
+  // Location and reason are both required and neither is preselected. Without
+  // them the form fails validation before the cap is ever consulted, which
+  // looks identical to the cap not working.
+  const adjustLocation = page.locator('#locationId')
+  const locationValue = await adjustLocation.locator('option').nth(1).getAttribute('value')
+  if (locationValue) await adjustLocation.selectOption(locationValue)
+
+  await page.fill('#countedQuantity', '99999')
+  const reason = page.locator('#reasonCodeId')
+  if (await reason.count()) {
+    const value = await reason.locator('option').nth(1).getAttribute('value')
+    if (value) await reason.selectOption(value)
+  }
+  // The button is named for the movement — 'Post adjustment', not 'Record'. A
+  // loose selector matched a different control and clicked nothing useful,
+  // which read as 'the cap did not refuse it'.
+  await page.getByRole('button', { name: /^post adjustment$/i }).click()
+
+  try {
+    await page.getByText(/limit is 5/i).first().waitFor({ timeout: 20_000 })
+    console.log('  ✓     admin · the cap refused an oversized adjustment')
+  } catch {
+    failures.push({
+      page: '/movements/new',
+      kind: 'policy',
+      text: 'an adjustment beyond the configured cap was not refused',
+    })
+  }
+
   current = 'admin · people'
   await visit('/admin/users', 'admin · people')
 

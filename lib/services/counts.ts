@@ -11,6 +11,7 @@ import {
   type CountLine,
   type CountSummary,
   type CountedLine,
+  withinAutoApproveThreshold,
 } from '@/lib/domain/count'
 import { NO_BATCH, fromBatchKey, toBatchKey } from '@/lib/domain/types'
 import { decode } from '@/lib/domain/sgtin96'
@@ -18,6 +19,7 @@ import { ApiError, ErrorCode } from '@/lib/api/errors'
 import { AuditAction, writeAudit } from '@/lib/audit'
 import { recordMovementInTx } from './movements'
 import { allocateDocNo } from './numbering'
+import { getSetting } from './settings'
 import { withDeadlockRetry } from './tx'
 
 /**
@@ -161,6 +163,14 @@ export interface SubmitCountResult {
   status: CountStatus
   lines: CountLine[]
   summary: CountSummary
+  /**
+   * Whether policy would let this post without a supervisor.
+   *
+   * Reported rather than acted on here: submitting still writes nothing to the
+   * ledger, and the caller decides. That keeps one write path for approval
+   * instead of two that can drift.
+   */
+  autoApprovable: boolean
 }
 
 /**
@@ -179,7 +189,7 @@ export async function submitCount(
     async (tx) => {
       const session = await tx.countSession.findUnique({
         where: { id: sessionId },
-        select: { id: true, docNo: true, locationId: true, status: true },
+        select: { id: true, docNo: true, locationId: true, siteId: true, status: true },
       })
       if (!session) throw new ApiError(ErrorCode.NOT_FOUND, 'That count session does not exist.')
       if (session.status !== CountStatus.COUNTING) {
@@ -211,12 +221,30 @@ export async function submitCount(
         data: { status: CountStatus.SUBMITTED, submittedAt: new Date() },
       })
 
+      const summary = summariseCount(lines)
+
+      /**
+       * Auto-approval, when an administrator has switched it on.
+       *
+       * Off by default and deliberately so: a count that posts itself is a
+       * count nobody checked (WADR-008). It exists because a warehouse counting
+       * thousands of lines a week will want it for the trivial ones, and the
+       * threshold is net units — a count that is two over and two short is not
+       * trivial, and `netUnits` being zero must not hide that.
+       */
+      const threshold = await getSetting(tx, 'count.autoApproveThreshold', session.siteId)
+      const auto =
+        threshold !== null && summary.short + summary.over > 0
+          ? withinAutoApproveThreshold(summary, threshold) && summary.missing === 0
+          : false
+
       return {
         sessionId,
         docNo: session.docNo,
         status: CountStatus.SUBMITTED,
         lines,
-        summary: summariseCount(lines),
+        summary,
+        autoApprovable: auto,
       }
     },
     { label: 'submit count' },
