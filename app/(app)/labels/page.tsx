@@ -148,7 +148,11 @@ export default async function LabelsPage({
       </Card>
 
       <p className="text-sm text-muted-foreground">
-        Printers are registered under <Link href="/devices" className="underline">Devices</Link>.
+        Printers are registered under{' '}
+        <Link href="/devices" className="underline">
+          Devices
+        </Link>
+        .
       </p>
     </div>
   )

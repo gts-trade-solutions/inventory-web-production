@@ -19,7 +19,10 @@ export default async function UsersPage() {
 
   const [users, sites] = await Promise.all([
     listUsers(user.db),
-    user.db.site.findMany({ select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } }),
+    user.db.site.findMany({
+      select: { id: true, code: true, name: true },
+      orderBy: { code: 'asc' },
+    }),
   ])
 
   return (

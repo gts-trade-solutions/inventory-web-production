@@ -132,9 +132,7 @@ describe('tag reports', () => {
     const at = new Date('2026-09-17T09:15:30.250Z')
     const report = buildTagReport([{ epc: EPC, antenna: 3, rssi: -52, at }])
 
-    expect(readTagReport(report)).toEqual([
-      { epc: EPC, antenna: 3, rssi: -52, at },
-    ])
+    expect(readTagReport(report)).toEqual([{ epc: EPC, antenna: 3, rssi: -52, at }])
   })
 
   it('reads RSSI as signed', () => {
@@ -172,10 +170,7 @@ describe('tag reports', () => {
   })
 
   it('uses our clock when the reader sends no timestamp', () => {
-    const epc = Buffer.concat([
-      Buffer.from([0x80 | ParameterType.EPC_96]),
-      Buffer.from(EPC, 'hex'),
-    ])
+    const epc = Buffer.concat([Buffer.from([0x80 | ParameterType.EPC_96]), Buffer.from(EPC, 'hex')])
     const header = Buffer.alloc(4)
     header.writeUInt16BE(ParameterType.TAG_REPORT_DATA, 0)
     header.writeUInt16BE(4 + epc.length, 2)

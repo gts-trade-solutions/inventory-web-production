@@ -83,9 +83,9 @@ export async function resolveCountScanAction(code: string) {
  * reader's figures, can correct them, and remains the one accountable for what
  * is submitted — a sweep is evidence, not a decision.
  */
-export async function sweepWithReaderAction(sessionId: string): Promise<
-  { ok: true; result: SweepResult } | { ok: false; error: string }
-> {
+export async function sweepWithReaderAction(
+  sessionId: string,
+): Promise<{ ok: true; result: SweepResult } | { ok: false; error: string }> {
   const user = await requireUser()
 
   if (!z.string().uuid().safeParse(sessionId).success) {

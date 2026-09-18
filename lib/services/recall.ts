@@ -136,7 +136,11 @@ function flatten(
     lines.push({
       section: 'MOVEMENT',
       reference: movement.docNo,
-      detail: [movement.type, movement.from && `from ${movement.from}`, movement.to && `to ${movement.to}`]
+      detail: [
+        movement.type,
+        movement.from && `from ${movement.from}`,
+        movement.to && `to ${movement.to}`,
+      ]
         .filter(Boolean)
         .join(' '),
       quantity: movement.quantity,

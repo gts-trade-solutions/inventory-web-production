@@ -57,10 +57,7 @@ export function UserAdmin({
     updateUserAction,
     {},
   )
-  const [resetState, resetAction] = useActionState<UserFormState, FormData>(
-    resetPasswordAction,
-    {},
-  )
+  const [resetState, resetAction] = useActionState<UserFormState, FormData>(resetPasswordAction, {})
   const [adding, setAdding] = useState(false)
 
   // Whichever action last produced one. Rendered in a single place so a

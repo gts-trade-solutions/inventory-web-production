@@ -232,13 +232,17 @@ describe('refusals', () => {
     })
     await prisma.device.update({ where: { id: reader.id }, data: { active: false } })
 
-    await expect(sweepLocation(prisma, sessionId, { deviceId: reader.id, mode: MODE })).rejects.toMatchObject({
+    await expect(
+      sweepLocation(prisma, sessionId, { deviceId: reader.id, mode: MODE }),
+    ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
     })
   })
 
   it('refuses an unknown session', async () => {
-    await expect(sweepLocation(prisma, randomUUID(), { mode: MODE })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(sweepLocation(prisma, randomUUID(), { mode: MODE })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
   })
 })
 

@@ -48,7 +48,9 @@ export function parseCsv(text: string): ParsedCsv {
     throw new CsvError('That file has no column headings in its first row.')
   }
 
-  const duplicates = headers.filter((header, index) => header !== '' && headers.indexOf(header) !== index)
+  const duplicates = headers.filter(
+    (header, index) => header !== '' && headers.indexOf(header) !== index,
+  )
   if (duplicates.length > 0) {
     // Two columns with one name means one silently wins, and which one is an
     // implementation detail nobody should have to know.
@@ -167,9 +169,9 @@ export function requireColumns(parsed: ParsedCsv, required: readonly string[]): 
 
   if (missing.length > 0) {
     throw new CsvError(
-      `That file is missing ${missing.map((column) => `"${column}"`).join(', ')}. It has ${
-        parsed.headers.map((header) => `"${header}"`).join(', ')
-      }.`,
+      `That file is missing ${missing.map((column) => `"${column}"`).join(', ')}. It has ${parsed.headers
+        .map((header) => `"${header}"`)
+        .join(', ')}.`,
     )
   }
 }

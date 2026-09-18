@@ -93,10 +93,16 @@ describe('creating an account', () => {
 
   it('gives every account a different password', async () => {
     const first = await createUser(prisma, {
-      email: 'a@inventory.local', name: 'A', role: UserRole.USER, siteIds: [],
+      email: 'a@inventory.local',
+      name: 'A',
+      role: UserRole.USER,
+      siteIds: [],
     })
     const second = await createUser(prisma, {
-      email: 'b@inventory.local', name: 'B', role: UserRole.USER, siteIds: [],
+      email: 'b@inventory.local',
+      name: 'B',
+      role: UserRole.USER,
+      siteIds: [],
     })
 
     expect(first.temporaryPassword).not.toBe(second.temporaryPassword)
@@ -108,7 +114,10 @@ describe('not locking everybody out', () => {
     // One click away from a system nobody can administer, recoverable only by a
     // developer with database access.
     const other = await createUser(prisma, {
-      email: 'operator@inventory.local', name: 'Operator', role: UserRole.USER, siteIds: [],
+      email: 'operator@inventory.local',
+      name: 'Operator',
+      role: UserRole.USER,
+      siteIds: [],
     })
 
     await expect(
@@ -118,7 +127,10 @@ describe('not locking everybody out', () => {
 
   it('refuses to demote the last administrator', async () => {
     const other = await createUser(prisma, {
-      email: 'operator@inventory.local', name: 'Operator', role: UserRole.USER, siteIds: [],
+      email: 'operator@inventory.local',
+      name: 'Operator',
+      role: UserRole.USER,
+      siteIds: [],
     })
 
     await expect(
@@ -143,17 +155,23 @@ describe('not locking everybody out', () => {
     // Even with another admin available: it is always a mistake, and the screen
     // lists your own name beside everyone else's.
     await createUser(prisma, {
-      email: 'second.admin@inventory.local', name: 'Second', role: UserRole.ADMIN, siteIds: [],
+      email: 'second.admin@inventory.local',
+      name: 'Second',
+      role: UserRole.ADMIN,
+      siteIds: [],
     })
 
-    await expect(
-      updateUser(prisma, adminId, { active: false }, admin()),
-    ).rejects.toThrow(/your own account/i)
+    await expect(updateUser(prisma, adminId, { active: false }, admin())).rejects.toThrow(
+      /your own account/i,
+    )
   })
 
   it('will not let you remove your own administrator access', async () => {
     await createUser(prisma, {
-      email: 'second.admin@inventory.local', name: 'Second', role: UserRole.ADMIN, siteIds: [],
+      email: 'second.admin@inventory.local',
+      name: 'Second',
+      role: UserRole.ADMIN,
+      siteIds: [],
     })
 
     await expect(
@@ -172,7 +190,10 @@ describe('changing an account', () => {
       create: { id: randomUUID(), code: 'WH2', name: 'Second warehouse' },
     })
     const { user } = await createUser(prisma, {
-      email: 'moves@inventory.local', name: 'Moves', role: UserRole.USER, siteIds: [wh.siteId],
+      email: 'moves@inventory.local',
+      name: 'Moves',
+      role: UserRole.USER,
+      siteIds: [wh.siteId],
     })
 
     const updated = await updateUser(prisma, user.id, { siteIds: [other.id] }, admin())
@@ -184,7 +205,10 @@ describe('changing an account', () => {
     // A refresh token outliving the change would leave somebody working with
     // access they no longer have, for up to thirty days.
     const { user } = await createUser(prisma, {
-      email: 'leaver@inventory.local', name: 'Leaver', role: UserRole.USER, siteIds: [],
+      email: 'leaver@inventory.local',
+      name: 'Leaver',
+      role: UserRole.USER,
+      siteIds: [],
     })
     await prisma.refreshToken.create({
       data: {
@@ -203,7 +227,10 @@ describe('changing an account', () => {
 
   it('ends live sessions when the role changes', async () => {
     const { user } = await createUser(prisma, {
-      email: 'promoted@inventory.local', name: 'Promoted', role: UserRole.USER, siteIds: [],
+      email: 'promoted@inventory.local',
+      name: 'Promoted',
+      role: UserRole.USER,
+      siteIds: [],
     })
     await prisma.refreshToken.create({
       data: {
@@ -229,7 +256,10 @@ describe('changing an account', () => {
 describe('resetting a password', () => {
   it('sets a new one and hands it back once', async () => {
     const { user } = await createUser(prisma, {
-      email: 'forgot@inventory.local', name: 'Forgot', role: UserRole.USER, siteIds: [],
+      email: 'forgot@inventory.local',
+      name: 'Forgot',
+      role: UserRole.USER,
+      siteIds: [],
     })
 
     const { temporaryPassword } = await resetPassword(prisma, user.id)
@@ -240,7 +270,10 @@ describe('resetting a password', () => {
 
   it('invalidates the old password', async () => {
     const created = await createUser(prisma, {
-      email: 'rotates@inventory.local', name: 'Rotates', role: UserRole.USER, siteIds: [],
+      email: 'rotates@inventory.local',
+      name: 'Rotates',
+      role: UserRole.USER,
+      siteIds: [],
     })
 
     await resetPassword(prisma, created.user.id)
@@ -252,7 +285,10 @@ describe('resetting a password', () => {
   it('ends every live session', async () => {
     // The old password is gone, so the sessions it authorised must go too.
     const { user } = await createUser(prisma, {
-      email: 'sessions@inventory.local', name: 'Sessions', role: UserRole.USER, siteIds: [],
+      email: 'sessions@inventory.local',
+      name: 'Sessions',
+      role: UserRole.USER,
+      siteIds: [],
     })
     await prisma.refreshToken.create({
       data: {
@@ -272,10 +308,16 @@ describe('resetting a password', () => {
 describe('listing', () => {
   it('puts active accounts first', async () => {
     const { user } = await createUser(prisma, {
-      email: 'retired@inventory.local', name: 'AAA Retired', role: UserRole.USER, siteIds: [],
+      email: 'retired@inventory.local',
+      name: 'AAA Retired',
+      role: UserRole.USER,
+      siteIds: [],
     })
     await createUser(prisma, {
-      email: 'second.admin@inventory.local', name: 'Second', role: UserRole.ADMIN, siteIds: [],
+      email: 'second.admin@inventory.local',
+      name: 'Second',
+      role: UserRole.ADMIN,
+      siteIds: [],
     })
     await updateUser(prisma, user.id, { active: false }, admin())
 

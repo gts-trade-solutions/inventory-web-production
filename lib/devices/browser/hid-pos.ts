@@ -123,7 +123,10 @@ export class HidPosParser {
       // A length field larger than any real barcode means a misread report
       // layout, not a very long barcode.
       this.reset()
-      return { kind: 'IGNORED', reason: `report declares ${declared} bytes, which is not a barcode` }
+      return {
+        kind: 'IGNORED',
+        reason: `report declares ${declared} bytes, which is not a barcode`,
+      }
     }
 
     // A fresh report starts a new barcode; the declared length tells us whether

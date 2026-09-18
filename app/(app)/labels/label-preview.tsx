@@ -81,9 +81,7 @@ function LabelFace({ label }: { label: LabelPreview }) {
           </Badge>
         )}
         {label.unsupported.length > 0 && (
-          <Badge variant="warn">
-            Not drawn: {[...new Set(label.unsupported)].join(' ')}
-          </Badge>
+          <Badge variant="warn">Not drawn: {[...new Set(label.unsupported)].join(' ')}</Badge>
         )}
       </div>
 
@@ -133,25 +131,28 @@ function Barcode({ element }: { element: BarcodeElement }) {
 
   const barWidth = element.moduleWidth
   // Guard bars run below the digits, which is how an EAN-13 actually looks.
-  const isGuard = (index: number) =>
-    index < 3 || (index >= 45 && index < 50) || index >= 92
+  const isGuard = (index: number) => index < 3 || (index >= 45 && index < 50) || index >= 92
 
   return (
     <g>
-      {element.bars.split('').map((bit, index) =>
-        bit === '1' ? (
-          <rect
-            key={index}
-            x={element.x + index * barWidth}
-            y={element.y}
-            width={barWidth}
-            height={
-              element.showText && !isGuard(index) ? element.height : element.height + textHeight * 0.5
-            }
-            fill="#000000"
-          />
-        ) : null,
-      )}
+      {element.bars
+        .split('')
+        .map((bit, index) =>
+          bit === '1' ? (
+            <rect
+              key={index}
+              x={element.x + index * barWidth}
+              y={element.y}
+              width={barWidth}
+              height={
+                element.showText && !isGuard(index)
+                  ? element.height
+                  : element.height + textHeight * 0.5
+              }
+              fill="#000000"
+            />
+          ) : null,
+        )}
 
       {element.showText && element.groups && (
         <>

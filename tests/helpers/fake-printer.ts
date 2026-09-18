@@ -37,9 +37,7 @@ export interface FakePrinter {
  * paused; line 2 field 2 is head up.
  */
 export const HEALTHY_STATUS =
-  '030,0,0,0317,000,0,0,0,000,0,0,0\r\n' +
-  '001,0,0,0,0,2,6,0,00000000,1,000\r\n' +
-  '1234,0\r\n'
+  '030,0,0,0317,000,0,0,0,000,0,0,0\r\n' + '001,0,0,0,0,2,6,0,00000000,1,000\r\n' + '1234,0\r\n'
 
 export async function startFakePrinter(
   behaviour: FakePrinterBehaviour = { kind: 'NORMAL' },

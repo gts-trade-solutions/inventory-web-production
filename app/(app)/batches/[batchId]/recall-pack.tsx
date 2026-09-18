@@ -85,8 +85,8 @@ export function RecallPack({ batchId, batchNo }: { batchId: string; batchNo: str
               <Alert variant="destructive">
                 <AlertTriangle className="size-4" />
                 <AlertDescription>
-                  The ledger accounts for {state.summary.expectedOnHand} but{' '}
-                  {state.summary.onHand} is on hand. Investigate before relying on this pack.
+                  The ledger accounts for {state.summary.expectedOnHand} but {state.summary.onHand}{' '}
+                  is on hand. Investigate before relying on this pack.
                 </AlertDescription>
               </Alert>
             )}

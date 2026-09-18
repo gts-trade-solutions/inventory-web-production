@@ -69,4 +69,3 @@ export async function saveSettingAction(
     return { error: error instanceof Error ? error.message : 'That setting could not be saved.' }
   }
 }
-

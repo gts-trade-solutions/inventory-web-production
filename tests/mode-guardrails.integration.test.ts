@@ -64,9 +64,9 @@ describe('in LIVE mode', () => {
   })
 
   it('refuses a half-configured networked printer', () => {
-    expect(() =>
-      connectorFor({ ...networked, address: null }, 'LIVE'),
-    ).toThrow(/no network address/i)
+    expect(() => connectorFor({ ...networked, address: null }, 'LIVE')).toThrow(
+      /no network address/i,
+    )
   })
 
   it('says what to do about it', () => {

@@ -58,7 +58,11 @@ describe('EAN-13 bars', () => {
   })
 
   it('groups the digits the way they are printed', () => {
-    expect(ean13Groups('890123400004')).toEqual(['8', '901234', '00004' + ean13('890123400004').slice(12)])
+    expect(ean13Groups('890123400004')).toEqual([
+      '8',
+      '901234',
+      '00004' + ean13('890123400004').slice(12),
+    ])
   })
 })
 

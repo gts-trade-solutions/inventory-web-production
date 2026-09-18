@@ -178,7 +178,9 @@ describe('the sample values', () => {
   it('fill every field a template can reference', () => {
     // The editor previews with these. If one were missing, the preview would
     // refuse for a template that prints perfectly well in practice.
-    const zpl = '^XA' + requirementsOf([]).needs.join('') +
+    const zpl =
+      '^XA' +
+      requirementsOf([]).needs.join('') +
       ['itemName', 'sku', 'barcode12', 'batchNo', 'expiryDate', 'code', 'printedOn']
         .map((field) => `^FD{{${field}}}^FS`)
         .join('') +

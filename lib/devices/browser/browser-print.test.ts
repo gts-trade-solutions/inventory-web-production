@@ -15,9 +15,7 @@ const refused = (status: number) => ({ ok: false, status, text: async () => '' }
 const unreachable = () => Promise.reject(new Error('ECONNREFUSED'))
 
 const AVAILABLE = JSON.stringify({
-  printer: [
-    { uid: 'ZD621-USB', name: 'ZD621', connection: 'usb', deviceType: 'printer' },
-  ],
+  printer: [{ uid: 'ZD621-USB', name: 'ZD621', connection: 'usb', deviceType: 'printer' }],
 })
 
 describe('choosing an endpoint', () => {
@@ -89,7 +87,9 @@ describe('when it is installed', () => {
 
   it('reads the older response shape too', async () => {
     // The utility has used both `printer` and `device` across versions.
-    const body = JSON.stringify({ device: [{ uid: 'A', name: 'B', connection: 'usb', deviceType: 'printer' }] })
+    const body = JSON.stringify({
+      device: [{ uid: 'A', name: 'B', connection: 'usb', deviceType: 'printer' }],
+    })
     const client = new BrowserPrint({
       fetch: (async () => ok(body)) as never,
       protocol: 'http:',

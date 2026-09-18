@@ -110,7 +110,10 @@ async function planItems(db: PrismaClient, rows: CsvRow[]): Promise<ImportPlan> 
   const seen = new Map<string, number>()
 
   const existing = new Map(
-    (await db.item.findMany({ select: { id: true, sku: true } })).map((item) => [item.sku, item.id]),
+    (await db.item.findMany({ select: { id: true, sku: true } })).map((item) => [
+      item.sku,
+      item.id,
+    ]),
   )
 
   for (const row of rows) {
@@ -184,10 +187,12 @@ async function planItems(db: PrismaClient, rows: CsvRow[]): Promise<ImportPlan> 
     create: planned.filter((item) => !item.existingId).length,
     update: planned.filter((item) => item.existingId).length,
     problems,
-    sample: planned.slice(0, 5).map(
-      (item) =>
-        `${item.existingId ? 'update' : 'create'} ${item.sku} — ${item.name} (${item.trackingMode.toLowerCase()})`,
-    ),
+    sample: planned
+      .slice(0, 5)
+      .map(
+        (item) =>
+          `${item.existingId ? 'update' : 'create'} ${item.sku} — ${item.name} (${item.trackingMode.toLowerCase()})`,
+      ),
   }
 }
 
@@ -197,7 +202,13 @@ async function planItems(db: PrismaClient, rows: CsvRow[]): Promise<ImportPlan> 
 
 async function planLocations(db: PrismaClient, rows: CsvRow[]): Promise<ImportPlan> {
   const problems: RowProblem[] = []
-  const planned: Array<{ line: number; code: string; name: string; zone: LocationZone; existing: boolean }> = []
+  const planned: Array<{
+    line: number
+    code: string
+    name: string
+    zone: LocationZone
+    existing: boolean
+  }> = []
   const seen = new Map<string, number>()
 
   const existing = new Set(
@@ -233,7 +244,13 @@ async function planLocations(db: PrismaClient, rows: CsvRow[]): Promise<ImportPl
       continue
     }
 
-    planned.push({ line: row.line, code, name, zone: zone as LocationZone, existing: existing.has(code) })
+    planned.push({
+      line: row.line,
+      code,
+      name,
+      zone: zone as LocationZone,
+      existing: existing.has(code),
+    })
   }
 
   return {
@@ -306,7 +323,9 @@ async function planBalances(db: PrismaClient, rows: CsvRow[]): Promise<ImportPla
         problems.push({ line: row.line, message: `${sku} is batch-tracked, so it needs a batch.` })
         continue
       }
-      const batch = batches.find((candidate) => candidate.itemId === item.id && candidate.batchNo === batchNo)
+      const batch = batches.find(
+        (candidate) => candidate.itemId === item.id && candidate.batchNo === batchNo,
+      )
       if (!batch) {
         problems.push({
           line: row.line,

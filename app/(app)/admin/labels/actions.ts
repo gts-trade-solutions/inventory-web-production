@@ -27,9 +27,12 @@ const schema = z.object({
   zplBody: z.string().trim().min(1, 'A template needs some ZPL.').max(20_000),
   widthMm: z.coerce.number().int().min(10).max(500),
   heightMm: z.coerce.number().int().min(10).max(500),
-  dpi: z.coerce.number().int().refine((value) => [203, 300, 600].includes(value), {
-    message: 'Zebra printers are 203, 300 or 600 dpi.',
-  }),
+  dpi: z.coerce
+    .number()
+    .int()
+    .refine((value) => [203, 300, 600].includes(value), {
+      message: 'Zebra printers are 203, 300 or 600 dpi.',
+    }),
   rfidEncode: z.enum(['on', 'off']).optional(),
 })
 

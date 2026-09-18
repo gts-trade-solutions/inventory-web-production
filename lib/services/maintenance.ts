@@ -94,9 +94,7 @@ export async function runNightlySweep(
  * sweep happened to run.
  */
 async function markExpiredBatches(db: PrismaClient, now: Date): Promise<number> {
-  const startOfToday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  )
+  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
 
   const result = await db.batch.updateMany({
     where: {

@@ -84,13 +84,13 @@ export function generatePassword(): string {
   return randomBytes(12).toString('base64url')
 }
 
-export async function createUser(
-  db: PrismaClient,
-  input: CreateUserInput,
-): Promise<CreatedUser> {
+export async function createUser(db: PrismaClient, input: CreateUserInput): Promise<CreatedUser> {
   const email = input.email.trim().toLowerCase()
 
-  const existing = await db.user.findUnique({ where: { email }, select: { id: true, deletedAt: true } })
+  const existing = await db.user.findUnique({
+    where: { email },
+    select: { id: true, deletedAt: true },
+  })
   if (existing) {
     throw new ApiError(
       ErrorCode.CONFLICT,
@@ -123,7 +123,8 @@ export async function createUser(
   })
 
   const [user] = await listUsers(db).then((rows) => rows.filter((row) => row.id === id))
-  if (!user) throw new ApiError(ErrorCode.INTERNAL, 'The account was created but could not be read back.')
+  if (!user)
+    throw new ApiError(ErrorCode.INTERNAL, 'The account was created but could not be read back.')
 
   return { user, temporaryPassword }
 }

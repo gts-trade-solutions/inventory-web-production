@@ -110,7 +110,11 @@ export class WebHidScanner {
         (
           await hid.requestDevice({
             filters: [
-              { vendorId: ZEBRA_VENDOR_ID, usagePage: POS_USAGE_PAGE, usage: BARCODE_SCANNER_USAGE },
+              {
+                vendorId: ZEBRA_VENDOR_ID,
+                usagePage: POS_USAGE_PAGE,
+                usage: BARCODE_SCANNER_USAGE,
+              },
               // Any POS scanner, not just Zebra's — a warehouse rarely has one
               // brand, and refusing the others buys nothing.
               { usagePage: POS_USAGE_PAGE, usage: BARCODE_SCANNER_USAGE },
@@ -189,11 +193,7 @@ export class WebHidScanner {
 
   /** Exposed so a test harness can feed reports without a device. */
   receive(event: HidInputReportLike): HidReportResult {
-    const bytes = new Uint8Array(
-      event.data.buffer,
-      event.data.byteOffset,
-      event.data.byteLength,
-    )
+    const bytes = new Uint8Array(event.data.buffer, event.data.byteOffset, event.data.byteLength)
     const result = this.parser.accept(event.reportId, bytes)
 
     if (result.kind === 'SCAN') {
@@ -217,9 +217,11 @@ export class WebHidScanner {
 function isScanner(device: HidDeviceLike): boolean {
   // getDevices() returns everything previously granted on this origin, which
   // may include devices that are not scanners at all.
-  const collections = (device as unknown as {
-    collections?: Array<{ usagePage?: number; usage?: number }>
-  }).collections
+  const collections = (
+    device as unknown as {
+      collections?: Array<{ usagePage?: number; usage?: number }>
+    }
+  ).collections
 
   if (!collections) return false
 

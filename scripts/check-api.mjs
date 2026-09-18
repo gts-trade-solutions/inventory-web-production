@@ -224,7 +224,10 @@ console.log('\n=== registers ===')
   log('  on hand computed server-side', typeof batches.body?.batches?.[0]?.onHand === 'number')
 
   const expired = await call('/batches?expiry=EXPIRED', { headers: auth(accessToken) })
-  log('filtered to expired', expired.body?.batches?.every((b) => b.expiryState === 'EXPIRED'))
+  log(
+    'filtered to expired',
+    expired.body?.batches?.every((b) => b.expiryState === 'EXPIRED'),
+  )
 
   const units = await call('/serials?limit=5', { headers: auth(accessToken) })
   log('GET /serials?limit=5', `${units.status} ${units.body?.units?.length} unit(s)`)
@@ -247,7 +250,10 @@ console.log('\n=== device registry ===')
 {
   const list = await call('/devices', { headers: auth(accessToken) })
   log('GET /devices', `${list.status} ${list.body?.devices?.length} device(s)`)
-  log('  every one flagged simulated', list.body?.devices?.every((d) => d.simulated))
+  log(
+    '  every one flagged simulated',
+    list.body?.devices?.every((d) => d.simulated),
+  )
 
   const printer = list.body?.devices?.find((d) => d.kind === 'PRINTER')
   const test = await call(`/devices/${printer.id}/self-test`, {
@@ -258,7 +264,10 @@ console.log('\n=== device registry ===')
   log('  steps reported', test.body?.steps?.length)
   // A report, not a boolean: on hardware day the useful answer is which step
   // failed and what it said.
-  log('  every step explains itself', test.body?.steps?.every((s) => s.detail?.length > 10))
+  log(
+    '  every step explains itself',
+    test.body?.steps?.every((s) => s.detail?.length > 10),
+  )
 
   const reader = list.body?.devices?.find((d) => d.kind === 'RFID_READER')
   const readerTest = await call(`/devices/${reader.id}/self-test`, {
@@ -355,7 +364,10 @@ console.log('\n=== printing ===')
     headers: auth(accessToken),
     body: JSON.stringify({ templateId: plain.id, fields: { itemName: item.name } }),
   })
-  log('label with a missing value refused', `${missingField.status} ${missingField.body?.error?.code}`)
+  log(
+    'label with a missing value refused',
+    `${missingField.status} ${missingField.body?.error?.code}`,
+  )
 
   // One label per tag, never copies: copies would encode the same EPC onto
   // every tag in the run.
@@ -364,7 +376,9 @@ console.log('\n=== printing ===')
     headers: auth(accessToken),
     body: JSON.stringify({ itemId: item.id, count: 3 }),
   })
-  const epcs = [0, 1, 2].map((offset) => epcAt(block.body.sampleEpc, block.body.serialFrom + offset))
+  const epcs = [0, 1, 2].map((offset) =>
+    epcAt(block.body.sampleEpc, block.body.serialFrom + offset),
+  )
 
   const tagged = await call('/print', {
     method: 'POST',
@@ -380,7 +394,10 @@ console.log('\n=== printing ===')
     headers: auth(accessToken),
     body: JSON.stringify({ templateId: plain.id, fields, epcs }),
   })
-  log('encoding via a non-RFID label refused', `${wrongTemplate.status} ${wrongTemplate.body?.error?.code}`)
+  log(
+    'encoding via a non-RFID label refused',
+    `${wrongTemplate.status} ${wrongTemplate.body?.error?.code}`,
+  )
 
   const history = await call(`/print?itemId=${item.id}`, { headers: auth(accessToken) })
   log('GET /print history', `${history.status} ${history.body?.jobs?.length} job(s)`)
@@ -453,9 +470,8 @@ console.log('\n=== count lifecycle ===')
       counted: atLocation.map((l) => ({
         itemId: l.itemId,
         batchId: l.batchId,
-        quantity: l.itemId === level.itemId && l.batchId === level.batchId
-          ? l.quantity - 1
-          : l.quantity,
+        quantity:
+          l.itemId === level.itemId && l.batchId === level.batchId ? l.quantity - 1 : l.quantity,
       })),
     }),
   })
@@ -463,11 +479,14 @@ console.log('\n=== count lifecycle ===')
   log('  status', submitted.body?.status)
   log('  says nothing has changed yet', JSON.stringify(submitted.body?.message?.slice(0, 26)))
   log('  lines reconciled', submitted.body?.summary?.lines?.length)
-  log('  short / over / missing', [
-    submitted.body?.summary?.short,
-    submitted.body?.summary?.over,
-    submitted.body?.summary?.missing,
-  ].join(' / '))
+  log(
+    '  short / over / missing',
+    [
+      submitted.body?.summary?.short,
+      submitted.body?.summary?.over,
+      submitted.body?.summary?.missing,
+    ].join(' / '),
+  )
   log('  net units', submitted.body?.summary?.netUnits)
 
   // WADR-008: submitting must not touch stock. If this number moved, approval
@@ -523,7 +542,10 @@ console.log('\n=== count lifecycle ===')
     headers: auth(accessToken),
     body: JSON.stringify({ counted: [] }),
   })
-  log('uncounted bin flagged as missing', empty.body?.summary?.missing === empty.body?.summary?.lines?.length)
+  log(
+    'uncounted bin flagged as missing',
+    empty.body?.summary?.missing === empty.body?.summary?.lines?.length,
+  )
   const rejected = await call(`/counts/${rejectedId}/reject`, {
     method: 'POST',
     headers: auth(supervisor.body.accessToken),
@@ -558,7 +580,10 @@ console.log('\n=== rate limiting ===')
   }
 
   log('sign-in eventually refuses', refused ? `429 ${refused.body?.error?.code}` : 'NEVER REFUSED')
-  log('  says how long to wait', /try again in \d+ seconds/i.test(refused?.body?.error?.message ?? ''))
+  log(
+    '  says how long to wait',
+    /try again in \d+ seconds/i.test(refused?.body?.error?.message ?? ''),
+  )
 
   // The refusal must not distinguish a real account from an invented one, or
   // the throttle becomes an account oracle.
@@ -621,7 +646,10 @@ console.log('\n=== recall pack and maintenance ===')
     headers: auth(accessToken),
     body: JSON.stringify({}),
   })
-  log('operator running the sweep', `${sweepAsOperator.status} ${sweepAsOperator.body?.error?.code}`)
+  log(
+    'operator running the sweep',
+    `${sweepAsOperator.status} ${sweepAsOperator.body?.error?.code}`,
+  )
 
   const admin = await call('/auth/token', {
     method: 'POST',

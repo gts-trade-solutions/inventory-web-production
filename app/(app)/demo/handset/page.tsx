@@ -55,8 +55,11 @@ export default async function SimulatedHandsetPage() {
         {/* Only untracked items are offered: a batch or serial item needs a batch
             number or unit ids that a two-field form cannot honestly supply. */}
         Untracked items only — a batch or serial movement needs more than this form collects.
-        Flagged rows appear in <Link href="/exceptions" className="underline">Exceptions</Link>, and
-        everything recorded here lands in the same ledger as the rest of the system.
+        Flagged rows appear in{' '}
+        <Link href="/exceptions" className="underline">
+          Exceptions
+        </Link>
+        , and everything recorded here lands in the same ledger as the rest of the system.
       </p>
     </div>
   )

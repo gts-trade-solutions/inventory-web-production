@@ -117,9 +117,9 @@ await visit('/counts')
 const UUID_HREF = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const firstRecordHref = async (pattern) => {
-  const hrefs = await page.locator(`a[href^="${pattern}"]`).evaluateAll((anchors) =>
-    anchors.map((anchor) => anchor.getAttribute('href')),
-  )
+  const hrefs = await page
+    .locator(`a[href^="${pattern}"]`)
+    .evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href')))
   return hrefs.find((href) => href && UUID_HREF.test(href)) ?? null
 }
 
@@ -145,9 +145,15 @@ await followFirst('/batches', '/batches/', 'batch detail (quarantine form)')
     failures.push({ page: 'batch detail', kind: 'missing', text: 'no recall pack control' })
   } else {
     await build.click()
-    await page.getByRole('button', { name: /download csv/i }).first().waitFor({ timeout: 30_000 })
+    await page
+      .getByRole('button', { name: /download csv/i })
+      .first()
+      .waitFor({ timeout: 30_000 })
 
-    const balanced = await page.getByText(/ledger balances|does not balance/i).first().textContent()
+    const balanced = await page
+      .getByText(/ledger balances|does not balance/i)
+      .first()
+      .textContent()
     console.log(`  ✓     batch · recall pack — ${balanced?.trim().slice(0, 60)}`)
   }
 }
@@ -197,9 +203,15 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
     } else {
       await sweepButton.click()
       // Wait for the reader's own sentence, which only exists after the sweep.
-      await page.getByText(/saw \d+ tag|saw no tags|reader/i).first().waitFor({ timeout: 30_000 })
+      await page
+        .getByText(/saw \d+ tag|saw no tags|reader/i)
+        .first()
+        .waitFor({ timeout: 30_000 })
 
-      const note = await page.getByText(/saw \d+ tag|saw no tags/i).first().textContent()
+      const note = await page
+        .getByText(/saw \d+ tag|saw no tags/i)
+        .first()
+        .textContent()
       console.log(`  ✓     counts · sweep — ${note?.trim()}`)
 
       if (!/simulation/i.test(note ?? '')) {
@@ -223,7 +235,10 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
 
   current = 'labels · preview'
   // The SVG only appears once the server has rendered the ZPL.
-  await page.getByRole('img', { name: /label preview/i }).first().waitFor({ timeout: 30_000 })
+  await page
+    .getByRole('img', { name: /label preview/i })
+    .first()
+    .waitFor({ timeout: 30_000 })
 
   const bars = await page.locator('svg[role="img"] rect').count()
   if (bars < 30) {
@@ -238,10 +253,19 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
   console.log(`  ✓     labels · preview drew ${bars} shapes`)
 
   current = 'labels · print'
-  await page.getByRole('button', { name: /^print$/i }).first().click()
-  await page.getByText(/PRN-\d{4}-\d{6}/).first().waitFor({ timeout: 30_000 })
+  await page
+    .getByRole('button', { name: /^print$/i })
+    .first()
+    .click()
+  await page
+    .getByText(/PRN-\d{4}-\d{6}/)
+    .first()
+    .waitFor({ timeout: 30_000 })
 
-  const receipt = await page.getByText(/PRN-\d{4}-\d{6}/).first().textContent()
+  const receipt = await page
+    .getByText(/PRN-\d{4}-\d{6}/)
+    .first()
+    .textContent()
   console.log(`  ✓     labels · printed — ${receipt?.trim().slice(0, 70)}`)
 }
 
@@ -259,7 +283,10 @@ if ((await selfTest.count()) === 0) {
   // but never updates says "nothing is happening" when the truth is "I am not
   // listening", which is the failure it exists to prevent.
   current = 'devices · live console'
-  await page.getByText(/connected|reconnecting/i).first().waitFor({ timeout: 30_000 })
+  await page
+    .getByText(/connected|reconnecting/i)
+    .first()
+    .waitFor({ timeout: 30_000 })
 
   current = 'devices · self-test'
   await selfTest.click()
@@ -267,7 +294,10 @@ if ((await selfTest.count()) === 0) {
   // Wait for something that can only exist AFTER the action returns. Waiting on
   // "Simulation" matched the badge already on the page, so the assertions below
   // ran before the report had rendered and passed for the wrong reason.
-  await page.getByText(/^\d+ms$/).first().waitFor({ timeout: 30_000 })
+  await page
+    .getByText(/^\d+ms$/)
+    .first()
+    .waitFor({ timeout: 30_000 })
 
   // The report must name its steps and say how long each took. A bare tick
   // would mean nothing on hardware day, which is the whole point of a
@@ -286,7 +316,10 @@ if ((await selfTest.count()) === 0) {
   // without a reload. This is the end-to-end proof that SSE is delivering.
   current = 'devices · live event'
   try {
-    await page.getByText(/self-test (passed|failed)/i).first().waitFor({ timeout: 20_000 })
+    await page
+      .getByText(/self-test (passed|failed)/i)
+      .first()
+      .waitFor({ timeout: 20_000 })
     console.log('  ✓     devices · live console received the event')
   } catch {
     failures.push({
@@ -320,14 +353,20 @@ if ((await selfTest.count()) === 0) {
     await page.fill('#quantity', '99999')
     await record.click()
 
-    await page.getByText(/2 pending/i).first().waitFor({ timeout: 10_000 })
+    await page
+      .getByText(/2 pending/i)
+      .first()
+      .waitFor({ timeout: 10_000 })
     console.log('  ✓     handset · 2 movements queued while offline')
 
     current = 'handset · sync'
     await page.getByRole('button', { name: /switch the network on/i }).click()
     await page.getByRole('button', { name: /^sync 2 movements$/i }).click()
 
-    await page.getByText(/what the server said/i).first().waitFor({ timeout: 30_000 })
+    await page
+      .getByText(/what the server said/i)
+      .first()
+      .waitFor({ timeout: 30_000 })
 
     const accepted = await page.getByText(/^accepted$/i).count()
     const flagged = await page.getByText(/^flagged$/i).count()
@@ -384,19 +423,30 @@ if ((await selfTest.count()) === 0) {
   await visit('/admin/import', 'admin · import')
 
   const stamp = Date.now()
-  await page.locator('textarea').fill(
-    `sku,name,unit,reorderPoint,tracking\nIMP-${stamp},Imported thing,pcs,5,NONE\n,No SKU here,pcs,1,NONE`,
-  )
+  await page
+    .locator('textarea')
+    .fill(
+      `sku,name,unit,reorderPoint,tracking\nIMP-${stamp},Imported thing,pcs,5,NONE\n,No SKU here,pcs,1,NONE`,
+    )
   await page.getByRole('button', { name: /check the file/i }).click()
-  await page.getByText(/nothing has been changed yet/i).first().waitFor({ timeout: 30_000 })
+  await page
+    .getByText(/nothing has been changed yet/i)
+    .first()
+    .waitFor({ timeout: 30_000 })
 
   // One good row, one bad — both reported before anything is written.
   await page.getByText(/1 new/i).first().waitFor({ timeout: 10_000 })
-  await page.getByText(/1 rows skipped|1 row skipped/i).first().waitFor({ timeout: 10_000 })
+  await page
+    .getByText(/1 rows skipped|1 row skipped/i)
+    .first()
+    .waitFor({ timeout: 10_000 })
   console.log('  ✓     admin · dry run reported 1 new and 1 skipped, and changed nothing')
 
   await page.getByRole('button', { name: /^import 1 row$/i }).click()
-  await page.getByText(/^Imported\.$/).first().waitFor({ timeout: 30_000 })
+  await page
+    .getByText(/^Imported\.$/)
+    .first()
+    .waitFor({ timeout: 30_000 })
   console.log('  ✓     admin · committed the import')
 
   // And it really landed.
@@ -419,7 +469,10 @@ if ((await selfTest.count()) === 0) {
 
   // A placeholder nothing can fill must be refused, and Save must be disabled.
   await page.fill('#zplBody', '^XA^FD{{nosuchfield}}^FS^XZ')
-  await page.getByText(/nothing can fill/i).first().waitFor({ timeout: 10_000 })
+  await page
+    .getByText(/nothing can fill/i)
+    .first()
+    .waitFor({ timeout: 10_000 })
   if (await page.getByRole('button', { name: /save template/i }).isEnabled()) {
     failures.push({
       page: '/admin/labels',
@@ -435,9 +488,15 @@ if ((await selfTest.count()) === 0) {
     '#zplBody',
     '^XA^CI28^PW812^LL406\n^FO30,30^A0N,40,40^FD{{itemName}}^FS\n^FO30,175^BY3,2,150^BEN,150,Y,N^FD{{barcode12}}^FS\n^XZ',
   )
-  await page.getByRole('img', { name: /label preview/i }).first().waitFor({ timeout: 20_000 })
+  await page
+    .getByRole('img', { name: /label preview/i })
+    .first()
+    .waitFor({ timeout: 20_000 })
   await page.getByRole('button', { name: /save template/i }).click()
-  await page.getByText(/created/i).first().waitFor({ timeout: 30_000 })
+  await page
+    .getByText(/created/i)
+    .first()
+    .waitFor({ timeout: 30_000 })
   console.log('  ✓     admin · previewed and saved a template')
 
   // A setting is only worth having if it changes behaviour, so this sets one
@@ -447,8 +506,14 @@ if ((await selfTest.count()) === 0) {
 
   // Stock integrity, from the screen rather than from curl.
   await page.getByRole('button', { name: /check now/i }).click()
-  await page.getByText(/ledger and the projection agree|do not match the ledger/i).first().waitFor({ timeout: 60_000 })
-  const integrity = await page.getByText(/ledger and the projection agree|do not match the ledger/i).first().textContent()
+  await page
+    .getByText(/ledger and the projection agree|do not match the ledger/i)
+    .first()
+    .waitFor({ timeout: 60_000 })
+  const integrity = await page
+    .getByText(/ledger and the projection agree|do not match the ledger/i)
+    .first()
+    .textContent()
   console.log(`  ✓     admin · stock integrity — ${integrity?.trim().slice(0, 60)}`)
 
   await page.fill('#adjust\\.maxQuantity', '5')
@@ -456,7 +521,10 @@ if ((await selfTest.count()) === 0) {
     .locator('form', { has: page.locator('#adjust\\.maxQuantity') })
     .getByRole('button', { name: /save/i })
     .click()
-  await page.getByText(/takes effect on the next movement/i).first().waitFor({ timeout: 30_000 })
+  await page
+    .getByText(/takes effect on the next movement/i)
+    .first()
+    .waitFor({ timeout: 30_000 })
   console.log('  ✓     admin · capped adjustments at 5')
 
   current = 'admin · settings take effect'
@@ -489,7 +557,10 @@ if ((await selfTest.count()) === 0) {
   await page.getByRole('button', { name: /^post adjustment$/i }).click()
 
   try {
-    await page.getByText(/limit is 5/i).first().waitFor({ timeout: 20_000 })
+    await page
+      .getByText(/limit is 5/i)
+      .first()
+      .waitFor({ timeout: 20_000 })
     console.log('  ✓     admin · the cap refused an oversized adjustment')
   } catch {
     failures.push({
@@ -509,7 +580,10 @@ if ((await selfTest.count()) === 0) {
 
   // The generated password is shown once. If it ever stops appearing, an admin
   // has created an account nobody can sign in to.
-  await page.getByText(/shown once, and not recoverable/i).first().waitFor({ timeout: 30_000 })
+  await page
+    .getByText(/shown once, and not recoverable/i)
+    .first()
+    .waitFor({ timeout: 30_000 })
   console.log('  ✓     admin · created an account and showed its password once')
 
   // The self-lockout guard, from the UI rather than the service: an admin must
@@ -537,7 +611,10 @@ if ((await selfTest.count()) === 0) {
     await page.fill('#label', 'Smoke-test printer')
     await page.locator('#connection').selectOption('SIMULATED')
     await page.getByRole('button', { name: /^add device$/i }).click()
-    await page.getByText(/Smoke-test printer added/i).first().waitFor({ timeout: 30_000 })
+    await page
+      .getByText(/Smoke-test printer added/i)
+      .first()
+      .waitFor({ timeout: 30_000 })
     console.log('  ✓     devices · registered a device as admin')
   }
 
@@ -550,11 +627,20 @@ if ((await selfTest.count()) === 0) {
 
     // A second click, not a dialog: the same guard, and it keeps the
     // consequence on screen while the operator decides.
-    await page.getByText(/will be destroyed/i).first().waitFor({ timeout: 10_000 })
+    await page
+      .getByText(/will be destroyed/i)
+      .first()
+      .waitFor({ timeout: 10_000 })
     await page.getByRole('button', { name: /yes, reset it/i }).click()
 
-    await page.getByText(/Demo data reset in/i).first().waitFor({ timeout: 120_000 })
-    const note = await page.getByText(/Demo data reset in/i).first().textContent()
+    await page
+      .getByText(/Demo data reset in/i)
+      .first()
+      .waitFor({ timeout: 120_000 })
+    const note = await page
+      .getByText(/Demo data reset in/i)
+      .first()
+      .textContent()
     console.log(`  ✓     devices · ${note?.trim().slice(0, 60)}`)
   }
 }

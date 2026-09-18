@@ -15,7 +15,8 @@ const COLUMNS: Record<Kind, { required: string; optional: string; example: strin
   items: {
     required: 'sku, name',
     optional: 'unit, reorderPoint, tracking (NONE/BATCH/SERIAL), barcode',
-    example: 'sku,name,unit,reorderPoint,tracking,barcode\nPKG-0001,Corrugated box,pcs,100,NONE,8901234000014',
+    example:
+      'sku,name,unit,reorderPoint,tracking,barcode\nPKG-0001,Corrugated box,pcs,100,NONE,8901234000014',
   },
   locations: {
     required: 'code, name',
@@ -188,9 +189,7 @@ export function ImportForm() {
                   </li>
                 ))}
                 {plan.problems.length > 50 && (
-                  <li className="text-muted-foreground">
-                    …and {plan.problems.length - 50} more.
-                  </li>
+                  <li className="text-muted-foreground">…and {plan.problems.length - 50} more.</li>
                 )}
               </ul>
             </div>

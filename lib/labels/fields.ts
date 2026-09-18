@@ -42,7 +42,12 @@ export const LABEL_FIELDS: readonly LabelFieldDescriptor[] = [
   { name: 'mfgDate', describes: 'Manufacture date', needs: 'batch', sample: '2026-03-31' },
   { name: 'location', describes: 'Location code', needs: 'location', sample: 'A-01' },
   { name: 'code', describes: 'Location code, for a bin label', needs: 'location', sample: 'A-01' },
-  { name: 'locationName', describes: 'Location name', needs: 'location', sample: 'Aisle A · Rack 01' },
+  {
+    name: 'locationName',
+    describes: 'Location name',
+    needs: 'location',
+    sample: 'Aisle A · Rack 01',
+  },
   { name: 'printedOn', describes: "Today's date", needs: 'always', sample: '2026-09-18' },
 ] as const
 

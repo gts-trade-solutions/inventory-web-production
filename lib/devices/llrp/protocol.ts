@@ -294,7 +294,10 @@ function epcOf(children: readonly LlrpParameter[]): string | null {
     const bits = epcData.value.readUInt16BE(0)
     const bytes = Math.ceil(bits / 8)
     if (bytes > 0 && epcData.value.length >= 2 + bytes) {
-      return epcData.value.subarray(2, 2 + bytes).toString('hex').toUpperCase()
+      return epcData.value
+        .subarray(2, 2 + bytes)
+        .toString('hex')
+        .toUpperCase()
     }
   }
 

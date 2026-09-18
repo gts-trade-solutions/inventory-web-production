@@ -220,13 +220,16 @@ export class LlrpReader extends EventEmitter {
     )
 
     steps.push(
-      await step(`Inventory for ${Math.round(this.selfTestInventoryMs / 1000)} seconds`, async () => {
-        const reads = await this.inventoryFor(this.selfTestInventoryMs)
-        const unique = new Set(reads.map((read) => read.epc))
-        return unique.size === 0
-          ? 'Ran, but saw no tags. Check antennas, power and that there is tagged stock in range.'
-          : `Saw ${unique.size} distinct tag${unique.size === 1 ? '' : 's'} in ${reads.length} reads.`
-      }),
+      await step(
+        `Inventory for ${Math.round(this.selfTestInventoryMs / 1000)} seconds`,
+        async () => {
+          const reads = await this.inventoryFor(this.selfTestInventoryMs)
+          const unique = new Set(reads.map((read) => read.epc))
+          return unique.size === 0
+            ? 'Ran, but saw no tags. Check antennas, power and that there is tagged stock in range.'
+            : `Saw ${unique.size} distinct tag${unique.size === 1 ? '' : 's'} in ${reads.length} reads.`
+        },
+      ),
     )
 
     this.disconnect()

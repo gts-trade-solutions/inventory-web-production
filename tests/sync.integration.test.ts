@@ -25,7 +25,9 @@ afterAll(async () => {
 
 const actor = () => ({ userId: wh.userId, deviceId: null })
 
-const movement = (overrides: Partial<PushMovement> & { type: PushMovement['type'] }): PushMovement => ({
+const movement = (
+  overrides: Partial<PushMovement> & { type: PushMovement['type'] },
+): PushMovement => ({
   id: randomUUID(),
   itemId: wh.tapeId,
   quantity: 1,
@@ -102,7 +104,10 @@ describe('pull', () => {
   it('sends the sentinel batch as null, never as a UUID of zeros', async () => {
     await recordMovement(
       prisma,
-      { siteId: wh.siteId, action: { kind: 'RECEIVE', itemId: wh.tapeId, toLocationId: wh.locationA, quantity: 5 } },
+      {
+        siteId: wh.siteId,
+        action: { kind: 'RECEIVE', itemId: wh.tapeId, toLocationId: wh.locationA, quantity: 5 },
+      },
       { userId: wh.userId },
     )
 
@@ -114,7 +119,13 @@ describe('pull', () => {
 
   it('carries the barcodes a scanner needs', async () => {
     await prisma.itemBarcode.create({
-      data: { id: randomUUID(), itemId: wh.tapeId, barcode: '8901234000045', packSize: 1, isPrimary: true },
+      data: {
+        id: randomUUID(),
+        itemId: wh.tapeId,
+        barcode: '8901234000045',
+        packSize: 1,
+        isPrimary: true,
+      },
     })
 
     const result = await pull(prisma, {})
@@ -250,7 +261,11 @@ describe('push', () => {
   it('accepts an offline over-issue and flags it', async () => {
     // Two devices both issued the last units in a dead zone. Rejecting the
     // second discards work somebody physically did (WADR-007).
-    await push(prisma, [movement({ type: 'RECEIVE', toLocationId: wh.locationA, quantity: 2 })], actor())
+    await push(
+      prisma,
+      [movement({ type: 'RECEIVE', toLocationId: wh.locationA, quantity: 2 })],
+      actor(),
+    )
 
     const { results } = await push(
       prisma,
@@ -290,7 +305,12 @@ describe('push', () => {
     // occurredAt is the operator's timeline; recordedAt is what ordering and
     // cursors use. A drifting phone must not reorder the ledger.
     const occurredAt = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
-    const pushed = movement({ type: 'RECEIVE', toLocationId: wh.locationA, quantity: 2, occurredAt })
+    const pushed = movement({
+      type: 'RECEIVE',
+      toLocationId: wh.locationA,
+      quantity: 2,
+      occurredAt,
+    })
 
     await push(prisma, [pushed], actor())
     const stored = await prisma.movement.findUniqueOrThrow({ where: { id: pushed.id } })

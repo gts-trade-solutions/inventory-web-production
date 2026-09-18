@@ -27,9 +27,9 @@ describe('mode enforcement', () => {
     const wh = await seedWarehouse()
     const before = await prisma.item.count()
 
-    await expect(
-      resetDemoData(prisma, 'LIVE', { userId: wh.userId }),
-    ).rejects.toBeInstanceOf(ModeViolationError)
+    await expect(resetDemoData(prisma, 'LIVE', { userId: wh.userId })).rejects.toBeInstanceOf(
+      ModeViolationError,
+    )
 
     // Nothing was touched. The assertion is the first line of the function
     // precisely so that a LIVE call cannot get far enough to matter.

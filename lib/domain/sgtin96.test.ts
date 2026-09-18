@@ -51,7 +51,9 @@ describe('encode', () => {
     ]
 
     for (const [prefix, reference, serial, filter] of cases) {
-      expect(encode(prefix, reference, serial, filter)).toBe(pack(prefix, reference, serial, filter))
+      expect(encode(prefix, reference, serial, filter)).toBe(
+        pack(prefix, reference, serial, filter),
+      )
     }
   })
 

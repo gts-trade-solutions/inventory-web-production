@@ -140,11 +140,7 @@ describe('what it refuses', () => {
 
   it('carries on past one bad entry', () => {
     // A firmware upgrade that adds a field must not stop a cycle count.
-    const { reads } = readZiotPayload([
-      null,
-      'nonsense',
-      { data: { idHex: EPC, antenna: 1 } },
-    ])
+    const { reads } = readZiotPayload([null, 'nonsense', { data: { idHex: EPC, antenna: 1 } }])
 
     expect(reads).toHaveLength(1)
   })

@@ -119,10 +119,7 @@ function after(position: EntityPosition | undefined) {
   if (!position) return {}
 
   return {
-    OR: [
-      { updatedAt: { gt: position.at } },
-      { updatedAt: position.at, id: { gt: position.id } },
-    ],
+    OR: [{ updatedAt: { gt: position.at } }, { updatedAt: position.at, id: { gt: position.id } }],
   }
 }
 
@@ -231,7 +228,10 @@ export async function pull(db: PrismaClient, options: PullOptions) {
       }),
 
       db.location.findMany({
-        where: { ...after(cursor.locations), ...(options.siteId ? { siteId: options.siteId } : {}) },
+        where: {
+          ...after(cursor.locations),
+          ...(options.siteId ? { siteId: options.siteId } : {}),
+        },
         select: {
           id: true,
           code: true,
@@ -323,12 +323,7 @@ export async function pull(db: PrismaClient, options: PullOptions) {
   const stockLevels = await db.stockLevel.findMany({
     where: afterStockLevel(cursor.stockLevels),
     select: { itemId: true, locationId: true, batchId: true, quantity: true, updatedAt: true },
-    orderBy: [
-      { updatedAt: 'asc' },
-      { itemId: 'asc' },
-      { locationId: 'asc' },
-      { batchId: 'asc' },
-    ],
+    orderBy: [{ updatedAt: 'asc' }, { itemId: 'asc' }, { locationId: 'asc' }, { batchId: 'asc' }],
     take: limit,
   })
 

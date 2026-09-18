@@ -172,9 +172,7 @@ describe('the auto-approve threshold actually reports on counts', () => {
       { id: randomUUID(), siteId: wh.siteId, locationId: wh.locationA, method: 'MANUAL' },
       { userId: wh.userId },
     )
-    return submitCount(prisma, sessionId, [
-      { itemId: wh.tapeId, batchId: null, quantity: counted },
-    ])
+    return submitCount(prisma, sessionId, [{ itemId: wh.tapeId, batchId: null, quantity: counted }])
   }
 
   it('is off by default — a count that posts itself is a count nobody checked', async () => {

@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { TcpPrinter, describeStatus, parseHostStatus } from '@/lib/devices/server/tcp-printer'
 import { PrintOutcome } from '@/lib/devices/printer'
 import { testLabel } from '@/lib/labels/zpl'
-import { HEALTHY_STATUS, closedPort, startFakePrinter, type FakePrinter } from './helpers/fake-printer'
+import {
+  HEALTHY_STATUS,
+  closedPort,
+  startFakePrinter,
+  type FakePrinter,
+} from './helpers/fake-printer'
 
 /**
  * The TCP 9100 print path, against something that actually speaks it.
@@ -192,8 +197,7 @@ describe('parseHostStatus', () => {
   it('reads paused and head-open', () => {
     // Head up is field 2 on line 2, not field 1 — field 1 is unused. Reading the
     // wrong one reports an open print head on every healthy printer.
-    const reply =
-      '030,0,1,0317,000,0,0,0,000,0,0,0\r\n001,0,1,0,0,2,6,0,00000000,1,000\r\n'
+    const reply = '030,0,1,0317,000,0,0,0,000,0,0,0\r\n001,0,1,0,0,2,6,0,00000000,1,000\r\n'
     const status = parseHostStatus(reply)
 
     expect(status.paused).toBe(true)

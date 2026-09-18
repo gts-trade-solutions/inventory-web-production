@@ -1,7 +1,16 @@
 'use client'
 
 import { startTransition, useActionState, useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, CheckCircle2, Loader2, Minus, Plus, Radio, ScanLine, Send } from 'lucide-react'
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Minus,
+  Plus,
+  Radio,
+  ScanLine,
+  Send,
+} from 'lucide-react'
 import {
   resolveCountScanAction,
   submitCountAction,
@@ -118,8 +127,7 @@ export function CountingSheet({
       setTallies((current) => {
         const next = current.map((tally) => {
           const line = result.counted.find(
-            (candidate) =>
-              candidate.itemId === tally.itemId && candidate.batchId === tally.batchId,
+            (candidate) => candidate.itemId === tally.itemId && candidate.batchId === tally.batchId,
           )
           return line ? { ...tally, counted: line.quantity } : tally
         })
@@ -301,10 +309,7 @@ export function CountingSheet({
 
         {sweepNote && (
           <span
-            className={cn(
-              'text-sm',
-              sweepNote.ok ? 'text-muted-foreground' : 'text-destructive',
-            )}
+            className={cn('text-sm', sweepNote.ok ? 'text-muted-foreground' : 'text-destructive')}
           >
             {sweepNote.text}
           </span>

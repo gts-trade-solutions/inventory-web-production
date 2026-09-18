@@ -178,9 +178,7 @@ function describe(
 
   const parts = [
     `${label} saw ${distinct} tag${distinct === 1 ? '' : 's'}${suffix}`,
-    outcome.accepted === distinct
-      ? ''
-      : `, ${outcome.accepted} new to this count`,
+    outcome.accepted === distinct ? '' : `, ${outcome.accepted} new to this count`,
   ]
 
   if (outcome.unknownEpcs > 0) {

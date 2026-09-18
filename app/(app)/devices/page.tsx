@@ -28,7 +28,10 @@ export default async function DevicesPage() {
   const user = await requireUser()
   const [devices, sites] = await Promise.all([
     listDevices(user.db, { includeRetired: true }),
-    user.db.site.findMany({ select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } }),
+    user.db.site.findMany({
+      select: { id: true, code: true, name: true },
+      orderBy: { code: 'asc' },
+    }),
   ])
 
   // A short-lived token for the console's SSE connection. The browser's

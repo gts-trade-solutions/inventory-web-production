@@ -50,7 +50,10 @@ export function endpointsFor(pageProtocol: string): readonly string[] {
 }
 
 interface FetchLike {
-  (input: string, init?: { signal?: AbortSignal; method?: string; body?: string }): Promise<{
+  (
+    input: string,
+    init?: { signal?: AbortSignal; method?: string; body?: string },
+  ): Promise<{
     ok: boolean
     status: number
     text(): Promise<string>
@@ -82,8 +85,7 @@ export class BrowserPrint {
   constructor(options: BrowserPrintOptions = {}) {
     this.fetch = options.fetch ?? (globalThis.fetch as unknown as FetchLike)
     this.protocol =
-      options.protocol ??
-      (typeof location === 'undefined' ? 'http:' : location.protocol)
+      options.protocol ?? (typeof location === 'undefined' ? 'http:' : location.protocol)
     this.probeTimeoutMs = options.probeTimeoutMs ?? PROBE_TIMEOUT_MS
     this.printTimeoutMs = options.printTimeoutMs ?? PRINT_TIMEOUT_MS
   }

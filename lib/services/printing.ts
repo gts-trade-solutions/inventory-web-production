@@ -220,7 +220,6 @@ export async function resolvePrinter(
   printerDeviceId: string | null,
   mode: AppMode,
 ): Promise<{ connector: PrinterConnector; deviceId: string | null }> {
-
   if (!printerDeviceId) {
     const fallback = await db.device.findFirst({
       where: { kind: DeviceKind.PRINTER, active: true },
@@ -310,7 +309,12 @@ export function splitAddress(address: string): [string, number | undefined] {
  */
 export async function labelFieldsFor(
   db: PrismaClient,
-  input: { templateId: string; itemId?: string | null; batchId?: string | null; locationId?: string | null },
+  input: {
+    templateId: string
+    itemId?: string | null
+    batchId?: string | null
+    locationId?: string | null
+  },
 ): Promise<{ fields: LabelFields; missing: string[] }> {
   const template = await db.labelTemplate.findUnique({
     where: { id: input.templateId },
@@ -337,12 +341,16 @@ export async function labelFieldsFor(
         })
       : null,
     input.locationId
-      ? db.location.findUnique({ where: { id: input.locationId }, select: { code: true, name: true } })
+      ? db.location.findUnique({
+          where: { id: input.locationId },
+          select: { code: true, name: true },
+        })
       : null,
   ])
 
-  const ean13 = item?.barcodes.find((barcode) => barcode.type === 'EAN13' && barcode.isPrimary)
-    ?? item?.barcodes.find((barcode) => barcode.type === 'EAN13')
+  const ean13 =
+    item?.barcodes.find((barcode) => barcode.type === 'EAN13' && barcode.isPrimary) ??
+    item?.barcodes.find((barcode) => barcode.type === 'EAN13')
 
   const fields: LabelFields = {
     itemName: item?.name,

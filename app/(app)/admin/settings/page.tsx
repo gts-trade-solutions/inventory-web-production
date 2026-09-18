@@ -43,7 +43,8 @@ export default async function SettingsPage() {
               options: setting.options,
               // Empty means "use the default", which is how the form reads an
               // absent limit too.
-              value: setting.value === null || setting.value === undefined ? '' : String(setting.value),
+              value:
+                setting.value === null || setting.value === undefined ? '' : String(setting.value),
               isDefault: setting.isDefault,
             }}
           />

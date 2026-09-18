@@ -30,9 +30,7 @@ const actor = () => ({ userId: wh.userId, deviceId: null })
 /** Movements timestamped in sequence, the way a client's outbox orders them. */
 function outbox(base: Date) {
   let tick = 0
-  return (
-    overrides: Partial<PushMovement> & { type: PushMovement['type'] },
-  ): PushMovement => ({
+  return (overrides: Partial<PushMovement> & { type: PushMovement['type'] }): PushMovement => ({
     id: randomUUID(),
     itemId: wh.tapeId,
     quantity: 1,

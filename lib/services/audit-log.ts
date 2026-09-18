@@ -54,14 +54,16 @@ export async function listAuditEntries(
       ...(filter.actorUserId ? { actorUserId: filter.actorUserId } : {}),
       ...(filter.search
         ? {
-            OR: [
-              { action: { contains: filter.search } },
-              { entity: { contains: filter.search } },
-            ],
+            OR: [{ action: { contains: filter.search } }, { entity: { contains: filter.search } }],
           }
         : {}),
       ...(filter.from || filter.to
-        ? { at: { ...(filter.from ? { gte: filter.from } : {}), ...(filter.to ? { lte: filter.to } : {}) } }
+        ? {
+            at: {
+              ...(filter.from ? { gte: filter.from } : {}),
+              ...(filter.to ? { lte: filter.to } : {}),
+            },
+          }
         : {}),
     },
     select: {
@@ -108,8 +110,16 @@ export async function auditFacets(
   db: PrismaClient,
 ): Promise<{ actions: string[]; entities: string[] }> {
   const [actions, entities] = await Promise.all([
-    db.auditLog.findMany({ select: { action: true }, distinct: ['action'], orderBy: { action: 'asc' } }),
-    db.auditLog.findMany({ select: { entity: true }, distinct: ['entity'], orderBy: { entity: 'asc' } }),
+    db.auditLog.findMany({
+      select: { action: true },
+      distinct: ['action'],
+      orderBy: { action: 'asc' },
+    }),
+    db.auditLog.findMany({
+      select: { entity: true },
+      distinct: ['entity'],
+      orderBy: { entity: 'asc' },
+    }),
   ])
 
   return {

@@ -38,8 +38,7 @@ export async function runSelfTestAction(
     // A self-test that cannot run is itself a finding, so it comes back as a
     // message rather than an error page.
     return {
-      error:
-        error instanceof Error ? error.message : 'The self-test could not be started.',
+      error: error instanceof Error ? error.message : 'The self-test could not be started.',
     }
   }
 }

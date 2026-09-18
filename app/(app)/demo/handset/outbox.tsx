@@ -47,13 +47,7 @@ const STORAGE_KEY = 'demo-handset-outbox'
  * document number, a real duplicate on replay, a real negative-stock flag that
  * turns up in Exceptions afterwards.
  */
-export function SimulatedHandset({
-  items,
-  locations,
-}: {
-  items: Option[]
-  locations: Option[]
-}) {
+export function SimulatedHandset({ items, locations }: { items: Option[]; locations: Option[] }) {
   const [online, setOnline] = useState(false)
   const [rows, setRows] = useState<Row[]>([])
   const [outcome, setOutcome] = useState<SyncOutcome>({})
@@ -151,11 +145,7 @@ export function SimulatedHandset({
             </CardTitle>
 
             <div className="flex items-center gap-2">
-              {rows.length > 0 && (
-                <Badge variant="warn">
-                  {rows.length} pending
-                </Badge>
-              )}
+              {rows.length > 0 && <Badge variant="warn">{rows.length} pending</Badge>}
               <Button
                 type="button"
                 variant={online ? 'outline' : 'default'}

@@ -36,11 +36,7 @@ describe('a dry run writes nothing', () => {
   })
 
   it('for opening balances', async () => {
-    const plan = await planImport(
-      prisma,
-      'balances',
-      `sku,location,quantity\nPKG-1004,A-01,50`,
-    )
+    const plan = await planImport(prisma, 'balances', `sku,location,quantity\nPKG-1004,A-01,50`)
 
     expect(plan.create).toBe(1)
     expect(await onHand(wh.tapeId, wh.locationA)).toBe(0)
@@ -50,7 +46,8 @@ describe('a dry run writes nothing', () => {
 
 describe('importing items', () => {
   it('creates and updates in one file', async () => {
-    const csv = 'sku,name,unit,reorderPoint,tracking\nPKG-1004,Packing tape,rolls,20,NONE\nNEW-9,Brand new,pcs,5,NONE'
+    const csv =
+      'sku,name,unit,reorderPoint,tracking\nPKG-1004,Packing tape,rolls,20,NONE\nNEW-9,Brand new,pcs,5,NONE'
 
     const plan = await planImport(prisma, 'items', csv)
     expect(plan).toMatchObject({ create: 1, update: 1, problems: [] })
@@ -111,9 +108,9 @@ describe('importing items', () => {
   })
 
   it('says which column is missing before reading any row', async () => {
-    await expect(
-      planImport(prisma, 'items', 'Item Code,Description\nA,B'),
-    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(planImport(prisma, 'items', 'Item Code,Description\nA,B')).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+    })
   })
 })
 

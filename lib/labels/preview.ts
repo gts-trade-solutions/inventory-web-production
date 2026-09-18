@@ -87,7 +87,10 @@ function previewFormat(body: string): LabelPreview {
   let pendingBarcode: { symbology: 'EAN13' | 'CODE128'; showText: boolean } | null = null
   let pendingRfid = false
 
-  for (const command of body.split('^').map((part) => part.trim()).filter(Boolean)) {
+  for (const command of body
+    .split('^')
+    .map((part) => part.trim())
+    .filter(Boolean)) {
     const verb = command.slice(0, 2).toUpperCase()
     const rest = command.slice(2)
 
@@ -158,7 +161,9 @@ function previewFormat(body: string): LabelPreview {
         }
 
         if (pendingBarcode) {
-          preview.elements.push(barcodeElement(data, x, y, barcodeHeight, moduleWidth, pendingBarcode))
+          preview.elements.push(
+            barcodeElement(data, x, y, barcodeHeight, moduleWidth, pendingBarcode),
+          )
           pendingBarcode = null
         } else {
           preview.elements.push({ kind: 'TEXT', x, y, height: fontHeight, text: data, blockWidth })

@@ -182,7 +182,9 @@ describe('self-testing a printer', () => {
     })
 
     await runSelfTest(prisma, device.id, LIVE)
-    expect((await prisma.device.findUniqueOrThrow({ where: { id: device.id } })).lastSeenAt).toBeNull()
+    expect(
+      (await prisma.device.findUniqueOrThrow({ where: { id: device.id } })).lastSeenAt,
+    ).toBeNull()
 
     printer = await startFakePrinter()
     await prisma.device.update({
@@ -277,6 +279,8 @@ describe('self-testing what the server cannot reach', () => {
   })
 
   it('refuses an unknown device', async () => {
-    await expect(runSelfTest(prisma, randomUUID(), LIVE)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(runSelfTest(prisma, randomUUID(), LIVE)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
   })
 })

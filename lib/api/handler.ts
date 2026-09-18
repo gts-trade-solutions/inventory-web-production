@@ -173,7 +173,10 @@ export function apiRoute<TSchema extends z.ZodTypeAny | undefined = undefined>(
        * it worked and contains nothing.
        */
       if (result instanceof Response) {
-        for (const [header, value] of Object.entries({ ...headersFor(requestId, claims.mode), ...rateLimitHeaders(limit) })) {
+        for (const [header, value] of Object.entries({
+          ...headersFor(requestId, claims.mode),
+          ...rateLimitHeaders(limit),
+        })) {
           if (!result.headers.has(header)) result.headers.set(header, value)
         }
         return result
@@ -208,7 +211,10 @@ export function publicRoute<TSchema extends z.ZodTypeAny | undefined = undefined
     const requestId = randomUUID()
 
     try {
-      const limit = limiter.check(`public:${addressOf(request)}`, options.rateLimit ?? RULES.signInPerAddress)
+      const limit = limiter.check(
+        `public:${addressOf(request)}`,
+        options.rateLimit ?? RULES.signInPerAddress,
+      )
       if (!limit.ok) {
         // Deliberately the same wording as a wrong password: a throttle that
         // says "slow down" only for real accounts is an account oracle.

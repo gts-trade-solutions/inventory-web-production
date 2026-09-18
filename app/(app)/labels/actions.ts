@@ -30,10 +30,7 @@ export interface PrintState {
   result?: PrintJobResult
 }
 
-export async function printLabelAction(
-  _prev: PrintState,
-  formData: FormData,
-): Promise<PrintState> {
+export async function printLabelAction(_prev: PrintState, formData: FormData): Promise<PrintState> {
   const user = await requireUser()
 
   const parsed = schema.safeParse({

@@ -64,9 +64,14 @@ export async function GET(request: Request): Promise<Response> {
   const { claims } = verified
   const url = new URL(request.url)
 
-  const kinds = url.searchParams.get('kinds')?.split(',').map((kind) => kind.trim().toUpperCase())
-  const lastEventId =
-    Number.parseInt(request.headers.get('last-event-id') ?? url.searchParams.get('since') ?? '', 10)
+  const kinds = url.searchParams
+    .get('kinds')
+    ?.split(',')
+    .map((kind) => kind.trim().toUpperCase())
+  const lastEventId = Number.parseInt(
+    request.headers.get('last-event-id') ?? url.searchParams.get('since') ?? '',
+    10,
+  )
 
   const encoder = new TextEncoder()
 

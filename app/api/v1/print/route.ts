@@ -8,7 +8,10 @@ const schema = z.object({
   printerDeviceId: z.string().uuid().nullable().optional(),
   copies: z.number().int().min(1).max(99).optional(),
   fields: z.record(z.union([z.string(), z.number()]).nullable()).optional(),
-  epcs: z.array(z.string().regex(/^[0-9A-Fa-f]{24}$/)).max(500).optional(),
+  epcs: z
+    .array(z.string().regex(/^[0-9A-Fa-f]{24}$/))
+    .max(500)
+    .optional(),
   itemId: z.string().uuid().nullable().optional(),
   batchId: z.string().uuid().nullable().optional(),
   serialUnitId: z.string().uuid().nullable().optional(),

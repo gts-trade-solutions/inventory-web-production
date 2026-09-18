@@ -99,7 +99,8 @@ export default async function LabelTemplatesPage({
                 <p className="mt-1 text-sm text-muted-foreground">
                   {row.widthMm}×{row.heightMm}mm at {row.dpi} dpi
                   {row.needs.length > 0 && ` · needs ${row.needs.join(' and ')}`}
-                  {row.usedBy > 0 && ` · used on ${row.usedBy} print job${row.usedBy === 1 ? '' : 's'}`}
+                  {row.usedBy > 0 &&
+                    ` · used on ${row.usedBy} print job${row.usedBy === 1 ? '' : 's'}`}
                 </p>
               </div>
 

@@ -92,7 +92,8 @@ export async function getSetting<K extends SettingKey>(
   })
 
   // A site row beats the global one.
-  const row = rows.find((candidate) => candidate.siteId === siteId) ?? rows.find((c) => c.siteId === '')
+  const row =
+    rows.find((candidate) => candidate.siteId === siteId) ?? rows.find((c) => c.siteId === '')
   if (!row) return definitions[key].fallback as Value<K>
 
   const parsed = definitions[key].schema.safeParse(row.value)
@@ -100,10 +101,7 @@ export async function getSetting<K extends SettingKey>(
 }
 
 /** Everything an administrator can change, with what is currently in force. */
-export async function listSettings(
-  db: PrismaClient,
-  siteId = '',
-): Promise<SettingDescriptor[]> {
+export async function listSettings(db: PrismaClient, siteId = ''): Promise<SettingDescriptor[]> {
   const stored = await db.setting.findMany({
     where: { siteId: { in: [siteId, ''] } },
     select: { key: true, siteId: true, value: true },
@@ -153,11 +151,7 @@ export async function setSetting(
 }
 
 /** Removes an override, so the shipped default applies again. */
-export async function clearSetting(
-  db: PrismaClient,
-  key: SettingKey,
-  siteId = '',
-): Promise<void> {
+export async function clearSetting(db: PrismaClient, key: SettingKey, siteId = ''): Promise<void> {
   await db.setting.deleteMany({ where: { key, siteId } })
 }
 

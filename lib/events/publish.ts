@@ -45,7 +45,8 @@ export function publishMovement(input: {
       kind: EventKind.MOVEMENT,
       mode: input.mode,
       siteId: input.siteId,
-      summary: `${input.docNo} · ${input.type.toLowerCase()} ${input.quantity} × ${input.itemName} ${where}`.trim(),
+      summary:
+        `${input.docNo} · ${input.type.toLowerCase()} ${input.quantity} × ${input.itemName} ${where}`.trim(),
       data: {
         docNo: input.docNo,
         type: input.type,
@@ -119,9 +120,7 @@ export function publishPrint(input: {
       kind: EventKind.PRINT,
       mode: input.mode,
       siteId: input.siteId,
-      summary: `${input.docNo} · ${input.labels} label${input.labels === 1 ? '' : 's'} ${
-        input.status.toLowerCase()
-      } to ${input.printer}${input.simulated ? ' (simulation)' : ''}`,
+      summary: `${input.docNo} · ${input.labels} label${input.labels === 1 ? '' : 's'} ${input.status.toLowerCase()} to ${input.printer}${input.simulated ? ' (simulation)' : ''}`,
       data: { docNo: input.docNo, status: input.status, epc: input.epc ?? null },
     })
   })

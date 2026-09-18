@@ -247,9 +247,7 @@ export class TcpPrinter implements PrinterConnector {
         }),
       )
 
-      socket.once('close', () =>
-        finish(() => resolve(Buffer.concat(chunks).toString('utf8'))),
-      )
+      socket.once('close', () => finish(() => resolve(Buffer.concat(chunks).toString('utf8'))))
 
       socket.write(payload)
     })

@@ -56,9 +56,7 @@ export function TemplateEditor({ template }: { template: EditableTemplate }) {
     const { needs, unknown } = requirementsOf(placeholders)
 
     if (unknown.length > 0) {
-      problems.push(
-        `Nothing can fill ${unknown.map((name) => `{{${name}}}`).join(', ')}.`,
-      )
+      problems.push(`Nothing can fill ${unknown.map((name) => `{{${name}}}`).join(', ')}.`)
     }
     if (/\^RFW/i.test(zpl)) {
       problems.push('Remove ^RFW — tag data is added per label when printing.')
@@ -201,15 +199,15 @@ export function TemplateEditor({ template }: { template: EditableTemplate }) {
         {review.preview ? (
           <LabelPreviewer zpl={review.preview} />
         ) : (
-          <p className="text-sm text-muted-foreground">
-            Fix the problems above to see the label.
-          </p>
+          <p className="text-sm text-muted-foreground">Fix the problems above to see the label.</p>
         )}
 
         <div className="rounded-lg border p-3">
           <p className="text-sm font-medium">
             This label needs{' '}
-            {review.needs.length === 0 ? 'nothing chosen before printing' : review.needs.join(' and ')}
+            {review.needs.length === 0
+              ? 'nothing chosen before printing'
+              : review.needs.join(' and ')}
           </p>
 
           <p className="mt-3 text-xs text-muted-foreground">

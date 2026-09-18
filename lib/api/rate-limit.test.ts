@@ -155,12 +155,12 @@ describe('headers', () => {
   })
 
   it('adds Retry-After only on a refusal', () => {
-    expect(rateLimitHeaders({ ok: true, limit: 10, remaining: 7, retryAfter: 0 })).not.toHaveProperty(
-      'Retry-After',
-    )
-    expect(rateLimitHeaders({ ok: false, limit: 10, remaining: 0, retryAfter: 42 })['Retry-After']).toBe(
-      '42',
-    )
+    expect(
+      rateLimitHeaders({ ok: true, limit: 10, remaining: 7, retryAfter: 0 }),
+    ).not.toHaveProperty('Retry-After')
+    expect(
+      rateLimitHeaders({ ok: false, limit: 10, remaining: 0, retryAfter: 42 })['Retry-After'],
+    ).toBe('42')
   })
 })
 

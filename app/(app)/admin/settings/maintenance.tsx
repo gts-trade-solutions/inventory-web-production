@@ -65,7 +65,12 @@ export function Maintenance() {
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => void run('check')} disabled={busy !== null}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void run('check')}
+            disabled={busy !== null}
+          >
             {busy === 'check' ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />

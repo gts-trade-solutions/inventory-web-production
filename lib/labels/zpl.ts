@@ -220,11 +220,16 @@ export function testLabel(printerLabel: string, simulated: boolean): string {
  * 4-inch label is 812 dots on a 203 dpi printer and 1200 on a 300 dpi one —
  * which is why the same template on the wrong printer prints off the edge.
  */
-export function dotsFor(widthMm: number, heightMm: number, dpi: number): {
+export function dotsFor(
+  widthMm: number,
+  heightMm: number,
+  dpi: number,
+): {
   width: number
   height: number
 } {
-  if (dpi <= 0) throw new ZplError('A printer resolution must be a positive number of dots per inch.')
+  if (dpi <= 0)
+    throw new ZplError('A printer resolution must be a positive number of dots per inch.')
 
   const perMm = dpi / 25.4
   return {

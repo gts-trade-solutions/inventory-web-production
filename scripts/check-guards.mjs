@@ -29,9 +29,18 @@ const ROOT = process.cwd()
  */
 const EXEMPT = new Map([
   ['app/(auth)/login/actions.ts', 'the login itself — guarding it would lock everybody out'],
-  ['app/(app)/actions.ts', 'sign-out only; it is safe for anyone and runs inside the authed layout'],
-  ['app/api/v1/health/route.ts', 'deliberately public: reachability, checked before any session exists'],
-  ['app/api/v1/stream/route.ts', 'verifies the bearer token itself, because SSE cannot use the JSON wrapper'],
+  [
+    'app/(app)/actions.ts',
+    'sign-out only; it is safe for anyone and runs inside the authed layout',
+  ],
+  [
+    'app/api/v1/health/route.ts',
+    'deliberately public: reachability, checked before any session exists',
+  ],
+  [
+    'app/api/v1/stream/route.ts',
+    'verifies the bearer token itself, because SSE cannot use the JSON wrapper',
+  ],
   ['app/api/auth/[...nextauth]/route.ts', "Auth.js's own handler"],
 ])
 

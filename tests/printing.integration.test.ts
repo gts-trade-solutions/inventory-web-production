@@ -143,8 +143,18 @@ describe('printing to a networked printer', () => {
     printer = await startFakePrinter()
     const deviceId = await registerNetworkPrinter(printer.port)
 
-    const first = await submitPrintJob(prisma, { templateId, printerDeviceId: deviceId, fields: FIELDS }, actor(), LIVE)
-    const second = await submitPrintJob(prisma, { templateId, printerDeviceId: deviceId, fields: FIELDS }, actor(), LIVE)
+    const first = await submitPrintJob(
+      prisma,
+      { templateId, printerDeviceId: deviceId, fields: FIELDS },
+      actor(),
+      LIVE,
+    )
+    const second = await submitPrintJob(
+      prisma,
+      { templateId, printerDeviceId: deviceId, fields: FIELDS },
+      actor(),
+      LIVE,
+    )
 
     expect(first.docNo).toMatch(/^PRN-\d{4}-\d{6}$/)
     expect(second.docNo).not.toBe(first.docNo)
@@ -241,7 +251,12 @@ describe('RFID encoding', () => {
     const deviceId = await registerSimulatedPrinter()
 
     await expect(
-      submitPrintJob(prisma, { templateId: rfidTemplateId, printerDeviceId: deviceId, fields: FIELDS }, actor(), DEMO),
+      submitPrintJob(
+        prisma,
+        { templateId: rfidTemplateId, printerDeviceId: deviceId, fields: FIELDS },
+        actor(),
+        DEMO,
+      ),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
   })
 })
@@ -274,21 +289,26 @@ describe('refusals', () => {
   it('refuses a retired template', async () => {
     await prisma.labelTemplate.update({ where: { id: templateId }, data: { active: false } })
 
-    await expect(submitPrintJob(prisma, { templateId, fields: FIELDS }, actor(), LIVE)).rejects.toMatchObject(
-      { code: 'NOT_FOUND' },
-    )
+    await expect(
+      submitPrintJob(prisma, { templateId, fields: FIELDS }, actor(), LIVE),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 
   it('refuses a printer that is not registered', async () => {
     await expect(
-      submitPrintJob(prisma, { templateId, printerDeviceId: randomUUID(), fields: FIELDS }, actor(), LIVE),
+      submitPrintJob(
+        prisma,
+        { templateId, printerDeviceId: randomUUID(), fields: FIELDS },
+        actor(),
+        LIVE,
+      ),
     ).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 
   it('says so plainly when no printer exists at all', async () => {
-    await expect(submitPrintJob(prisma, { templateId, fields: FIELDS }, actor(), LIVE)).rejects.toThrow(
-      /No printer is set up/,
-    )
+    await expect(
+      submitPrintJob(prisma, { templateId, fields: FIELDS }, actor(), LIVE),
+    ).rejects.toThrow(/No printer is set up/)
   })
 })
 
@@ -370,6 +390,9 @@ describe('splitAddress', () => {
   })
 
   it('does not mistake a hostname for a port', () => {
-    expect(splitAddress('printer.local:not-a-port')).toEqual(['printer.local:not-a-port', undefined])
+    expect(splitAddress('printer.local:not-a-port')).toEqual([
+      'printer.local:not-a-port',
+      undefined,
+    ])
   })
 })
