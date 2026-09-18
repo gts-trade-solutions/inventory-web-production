@@ -243,6 +243,62 @@ console.log('\n=== registers ===')
   }
 }
 
+console.log('\n=== device registry ===')
+{
+  const list = await call('/devices', { headers: auth(accessToken) })
+  log('GET /devices', `${list.status} ${list.body?.devices?.length} device(s)`)
+  log('  every one flagged simulated', list.body?.devices?.every((d) => d.simulated))
+
+  const printer = list.body?.devices?.find((d) => d.kind === 'PRINTER')
+  const test = await call(`/devices/${printer.id}/self-test`, {
+    method: 'POST',
+    headers: auth(accessToken),
+  })
+  log('POST /devices/:id/self-test', `${test.status} ${test.body?.ok ? 'ok' : 'failed'}`)
+  log('  steps reported', test.body?.steps?.length)
+  // A report, not a boolean: on hardware day the useful answer is which step
+  // failed and what it said.
+  log('  every step explains itself', test.body?.steps?.every((s) => s.detail?.length > 10))
+
+  const reader = list.body?.devices?.find((d) => d.kind === 'RFID_READER')
+  const readerTest = await call(`/devices/${reader.id}/self-test`, {
+    method: 'POST',
+    headers: auth(accessToken),
+  })
+  log('RFID reader self-test', `${readerTest.status} ${readerTest.body?.steps?.length} step(s)`)
+
+  const scanner = list.body?.devices?.find((d) => d.kind === 'SCANNER')
+  const scannerTest = await call(`/devices/${scanner.id}/self-test`, {
+    method: 'POST',
+    headers: auth(accessToken),
+  })
+  log('scanner says test it from Scan', /Scan/.test(scannerTest.body?.steps?.[0]?.detail ?? ''))
+
+  // Registering shared hardware is an admin job.
+  const asOperator = await call('/devices', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({ label: 'Rogue printer', kind: 'PRINTER', connection: 'SIMULATED' }),
+  })
+  log('operator registering a printer', `${asOperator.status} ${asOperator.body?.error?.code}`)
+
+  const admin = await call('/auth/token', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: 'admin@inventory.local',
+      password: 'demo1234',
+      mode: 'DEMO',
+    }),
+  })
+
+  const noAddress = await call('/devices', {
+    method: 'POST',
+    headers: auth(admin.body.accessToken),
+    body: JSON.stringify({ label: 'Nowhere', kind: 'PRINTER', connection: 'NETWORK' }),
+  })
+  log('networked device with no address', `${noAddress.status} ${noAddress.body?.error?.code}`)
+}
+
 console.log('\n=== traceability ===')
 {
   const pulled = await call('/sync/pull', { headers: auth(accessToken) })

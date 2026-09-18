@@ -130,6 +130,38 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
   await visit(`/movements/new?item=${itemId}&kind=${kind}`, `movement form · ${kind}`)
 }
 
+// --- devices -------------------------------------------------------------
+// The self-test is clicked, not just rendered. It is a server action driving a
+// device connector, and "the page loaded" says nothing about whether pressing
+// the button works.
+await visit('/devices')
+
+const selfTest = page.getByRole('button', { name: /self-test/i }).first()
+if ((await selfTest.count()) === 0) {
+  failures.push({ page: '/devices', kind: 'missing', text: 'no self-test button' })
+} else {
+  current = 'devices · self-test'
+  await selfTest.click()
+
+  // Wait for something that can only exist AFTER the action returns. Waiting on
+  // "Simulation" matched the badge already on the page, so the assertions below
+  // ran before the report had rendered and passed for the wrong reason.
+  await page.getByText(/^\d+ms$/).first().waitFor({ timeout: 30_000 })
+
+  // The report must name its steps and say how long each took. A bare tick
+  // would mean nothing on hardware day, which is the whole point of a
+  // self-test.
+  const reported = await page.getByText(/^\d+ms$/).count()
+  if (reported < 2) {
+    failures.push({
+      page: '/devices',
+      kind: 'empty',
+      text: `self-test reported ${reported} step(s); expected a step-by-step report`,
+    })
+  }
+  console.log(`  ✓     devices · self-test reported ${reported} step(s)`)
+}
+
 await browser.close()
 
 console.log()

@@ -61,7 +61,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Devices',
     items: [
-      { href: '/devices', label: 'Devices', icon: Cpu, comingSoon: true },
+      { href: '/devices', label: 'Devices', icon: Cpu },
       { href: '/labels', label: 'Labels & printing', icon: Printer, comingSoon: true },
     ],
   },
