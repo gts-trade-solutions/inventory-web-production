@@ -362,6 +362,36 @@ if ((await selfTest.count()) === 0) {
   await visit('/admin/audit', 'admin · audit log')
   await visit('/admin/reason-codes', 'admin · reason codes')
 
+  // The template editor refuses what a printer cannot use. Driven for real,
+  // because a validator nobody exercises is a validator that quietly stops
+  // matching the server's.
+  current = 'admin · label templates'
+  await visit('/admin/labels', 'admin · label templates')
+  await visit('/admin/labels?edit=new', 'admin · new template')
+
+  // A placeholder nothing can fill must be refused, and Save must be disabled.
+  await page.fill('#zplBody', '^XA^FD{{nosuchfield}}^FS^XZ')
+  await page.getByText(/nothing can fill/i).first().waitFor({ timeout: 10_000 })
+  if (await page.getByRole('button', { name: /save template/i }).isEnabled()) {
+    failures.push({
+      page: '/admin/labels',
+      kind: 'validation',
+      text: 'a template with an unfillable placeholder could still be saved',
+    })
+  }
+  console.log('  ✓     admin · refused a template nothing can fill')
+
+  // A good one previews and saves.
+  await page.fill('#name', `Smoke label ${Date.now()}`)
+  await page.fill(
+    '#zplBody',
+    '^XA^CI28^PW812^LL406\n^FO30,30^A0N,40,40^FD{{itemName}}^FS\n^FO30,175^BY3,2,150^BEN,150,Y,N^FD{{barcode12}}^FS\n^XZ',
+  )
+  await page.getByRole('img', { name: /label preview/i }).first().waitFor({ timeout: 20_000 })
+  await page.getByRole('button', { name: /save template/i }).click()
+  await page.getByText(/created/i).first().waitFor({ timeout: 30_000 })
+  console.log('  ✓     admin · previewed and saved a template')
+
   // A setting is only worth having if it changes behaviour, so this sets one
   // and then does the thing it governs.
   current = 'admin · settings'
