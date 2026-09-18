@@ -12,6 +12,7 @@ import { signAccessToken } from '@/lib/api/jwt'
 import { SelfTestButton } from './self-test-button'
 import { EventConsole } from './event-console'
 import { DemoReset } from './demo-reset'
+import { RegisterDevice } from './register-device'
 
 export const metadata: Metadata = { title: 'Devices' }
 
@@ -25,7 +26,10 @@ export const metadata: Metadata = { title: 'Devices' }
  */
 export default async function DevicesPage() {
   const user = await requireUser()
-  const devices = await listDevices(user.db, { includeRetired: true })
+  const [devices, sites] = await Promise.all([
+    listDevices(user.db, { includeRetired: true }),
+    user.db.site.findMany({ select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } }),
+  ])
 
   // A short-lived token for the console's SSE connection. The browser's
   // EventSource cannot set an Authorization header, and the same endpoint
@@ -73,6 +77,12 @@ export default async function DevicesPage() {
 
         {/* Only in DEMO, and only for an admin. In LIVE the service would refuse
             anyway, but offering a button that always fails is its own problem. */}
+        {roleAtLeast(user.role, UserRole.ADMIN) && (
+          <RegisterDevice
+            sites={sites.map((site) => ({ id: site.id, label: `${site.code} — ${site.name}` }))}
+          />
+        )}
+
         {user.mode === 'DEMO' && roleAtLeast(user.role, UserRole.ADMIN) && <DemoReset />}
       </div>
 

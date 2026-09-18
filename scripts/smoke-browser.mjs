@@ -357,6 +357,25 @@ if ((await selfTest.count()) === 0) {
   await page.waitForURL(/dashboard/, { timeout: 30_000 })
   await visit('/devices', '/devices as admin')
 
+  // --- admin screens, which only exist for this account ------------------
+  current = 'admin · audit log'
+  await visit('/admin/audit', 'admin · audit log')
+  await visit('/admin/reason-codes', 'admin · reason codes')
+
+  current = 'devices · register'
+  await visit('/devices', '/devices as admin (again)')
+  const add = page.getByRole('button', { name: /add a printer or reader/i }).first()
+  if ((await add.count()) === 0) {
+    failures.push({ page: '/devices', kind: 'missing', text: 'an admin cannot add a device' })
+  } else {
+    await add.click()
+    await page.fill('#label', 'Smoke-test printer')
+    await page.locator('#connection').selectOption('SIMULATED')
+    await page.getByRole('button', { name: /^add device$/i }).click()
+    await page.getByText(/Smoke-test printer added/i).first().waitFor({ timeout: 30_000 })
+    console.log('  ✓     devices · registered a device as admin')
+  }
+
   const reset = page.getByRole('button', { name: /^reset demo data$/i }).first()
 
   if ((await reset.count()) === 0) {
