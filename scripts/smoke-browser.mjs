@@ -135,6 +135,22 @@ const followFirst = async (listPath, pattern, label) => {
 
 await followFirst('/inventory', '/inventory/', 'item detail')
 await followFirst('/batches', '/batches/', 'batch detail (quarantine form)')
+
+// The recall pack, from the screen a quality manager is standing on. Behind an
+// API it was reachable only by a developer, which is the opposite of the point.
+{
+  current = 'batch · recall pack'
+  const build = page.getByRole('button', { name: /build the recall pack/i }).first()
+  if ((await build.count()) === 0) {
+    failures.push({ page: 'batch detail', kind: 'missing', text: 'no recall pack control' })
+  } else {
+    await build.click()
+    await page.getByRole('button', { name: /download csv/i }).first().waitFor({ timeout: 30_000 })
+
+    const balanced = await page.getByText(/ledger balances|does not balance/i).first().textContent()
+    console.log(`  ✓     batch · recall pack — ${balanced?.trim().slice(0, 60)}`)
+  }
+}
 await followFirst('/serials', '/serials/', 'serial life history')
 
 // The movement form is the most interactive page, so it is the most likely to
@@ -428,6 +444,12 @@ if ((await selfTest.count()) === 0) {
   // and then does the thing it governs.
   current = 'admin · settings'
   await visit('/admin/settings', 'admin · settings')
+
+  // Stock integrity, from the screen rather than from curl.
+  await page.getByRole('button', { name: /check now/i }).click()
+  await page.getByText(/ledger and the projection agree|do not match the ledger/i).first().waitFor({ timeout: 60_000 })
+  const integrity = await page.getByText(/ledger and the projection agree|do not match the ledger/i).first().textContent()
+  console.log(`  ✓     admin · stock integrity — ${integrity?.trim().slice(0, 60)}`)
 
   await page.fill('#adjust\\.maxQuantity', '5')
   await page

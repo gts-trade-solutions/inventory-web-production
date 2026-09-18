@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/auth/guards'
 import { listSettings } from '@/lib/services/settings'
 import { PageHeader } from '@/components/page-header'
 import { SettingsForm } from './settings-form'
+import { Maintenance } from './maintenance'
 
 export const metadata: Metadata = { title: 'Settings' }
 
@@ -48,6 +49,8 @@ export default async function SettingsPage() {
           />
         ))}
       </div>
+
+      <Maintenance />
 
       <p className="text-sm text-muted-foreground">
         Changes take effect on the next movement, and every one is recorded in the audit log.

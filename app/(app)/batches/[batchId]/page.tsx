@@ -7,6 +7,7 @@ import { requireUser, roleAtLeast } from '@/lib/auth/guards'
 import { traceBatch } from '@/lib/services/traceability'
 import { BatchStatusForm } from './batch-status-form'
 import { PageHeader } from '@/components/page-header'
+import { RecallPack } from './recall-pack'
 import { EmptyState } from '@/components/empty-state'
 import { ExpiryBadge } from '@/components/expiry-badge'
 import { Badge } from '@/components/ui/badge'
@@ -63,6 +64,8 @@ export default async function BatchDetailPage({
           </div>
         }
       />
+
+      <RecallPack batchId={batch.id} batchNo={batch.batchNo} />
 
       <div className="flex flex-wrap items-center gap-2">
         <ExpiryBadge
