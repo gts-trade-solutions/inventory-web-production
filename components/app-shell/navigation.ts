@@ -12,6 +12,7 @@ import {
   ScrollText,
   SlidersHorizontal,
   Tags,
+  Upload,
   Users,
   Settings,
   Smartphone,
@@ -94,6 +95,12 @@ export const NAV_SECTIONS: NavSection[] = [
         href: '/admin/reason-codes',
         label: 'Reason codes',
         icon: Settings,
+        minimumRole: UserRole.ADMIN,
+      },
+      {
+        href: '/admin/import',
+        label: 'Import',
+        icon: Upload,
         minimumRole: UserRole.ADMIN,
       },
       {

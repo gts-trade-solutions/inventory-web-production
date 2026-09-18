@@ -362,6 +362,38 @@ if ((await selfTest.count()) === 0) {
   await visit('/admin/audit', 'admin · audit log')
   await visit('/admin/reason-codes', 'admin · reason codes')
 
+  // Import, driven all the way through: check, then commit. The dry run must
+  // change nothing, which is the property the whole screen exists for.
+  current = 'admin · import'
+  await visit('/admin/import', 'admin · import')
+
+  const stamp = Date.now()
+  await page.locator('textarea').fill(
+    `sku,name,unit,reorderPoint,tracking\nIMP-${stamp},Imported thing,pcs,5,NONE\n,No SKU here,pcs,1,NONE`,
+  )
+  await page.getByRole('button', { name: /check the file/i }).click()
+  await page.getByText(/nothing has been changed yet/i).first().waitFor({ timeout: 30_000 })
+
+  // One good row, one bad — both reported before anything is written.
+  await page.getByText(/1 new/i).first().waitFor({ timeout: 10_000 })
+  await page.getByText(/1 rows skipped|1 row skipped/i).first().waitFor({ timeout: 10_000 })
+  console.log('  ✓     admin · dry run reported 1 new and 1 skipped, and changed nothing')
+
+  await page.getByRole('button', { name: /^import 1 row$/i }).click()
+  await page.getByText(/^Imported\.$/).first().waitFor({ timeout: 30_000 })
+  console.log('  ✓     admin · committed the import')
+
+  // And it really landed.
+  await visit(`/inventory?q=IMP-${stamp}`, 'inventory · finds the imported item')
+  if ((await page.getByText(`IMP-${stamp}`).count()) === 0) {
+    failures.push({
+      page: '/inventory',
+      kind: 'import',
+      text: 'the imported item does not appear in inventory',
+    })
+  }
+  console.log('  ✓     admin · the imported item is in inventory')
+
   // The template editor refuses what a printer cannot use. Driven for real,
   // because a validator nobody exercises is a validator that quietly stops
   // matching the server's.
