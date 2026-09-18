@@ -15,7 +15,10 @@ runs on. One product, one database, one set of rules, two clients.
                                  └─►  Zebra devices: scanners · RFID readers · printers
 ```
 
-> **Status: planning.** No code yet. The documents below are for review before the build starts.
+> **Status: built, and running against MySQL.** Phases 1–9 are in: the ledger, traceability, the device layer
+> and its simulators, demo mode, the admin surface, import and export, the recall pack, rate limiting, backups
+> and a restore that has actually been performed. Remaining work is listed in
+> [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md). Deploying it: [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Documentation
 
@@ -26,6 +29,7 @@ runs on. One product, one database, one set of rules, two clients.
 | [docs/API_CONTRACT.md](docs/API_CONTRACT.md)             | The `/api/v1` contract shared by the mobile app, the web device layer and integrations                     |
 | [docs/DEVICE_INTEGRATION.md](docs/DEVICE_INTEGRATION.md) | Zebra hardware, how a browser reaches it, and **how the connectors are built and tested with no hardware** |
 | [docs/DEMO_MODE.md](docs/DEMO_MODE.md)                   | Running the whole product on a demo database with simulated devices                                        |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md)                 | Deploying it, the scheduled jobs, backups, and the restore drill that proves they work                     |
 
 ## What v1 includes
 
