@@ -4,7 +4,6 @@ import { movementSummary } from '@/lib/services/reports'
 import { PageHeader } from '@/components/page-header'
 import { ReportFilters, filterOptions } from '../filters'
 import { ReportDownload } from '../download'
-import { movementsCsvAction } from '../actions'
 import { defaultRange, endOfDay } from '../range'
 import {
   Table,
@@ -53,14 +52,7 @@ export default async function MovementsReportPage({
           {report.totals.movements} movement{report.totals.movements === 1 ? '' : 's'} between{' '}
           {from} and {to}
         </p>
-        <ReportDownload
-          build={movementsCsvAction.bind(null, {
-            from,
-            to,
-            siteId: params.siteId,
-            categoryId: params.categoryId,
-          })}
-        />
+        <ReportDownload report="movements" params={{ ...params, from, to }} />
       </div>
 
       <div className="rounded-lg border bg-card">

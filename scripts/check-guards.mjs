@@ -54,11 +54,27 @@ function relative(path) {
   return path.replace(`${ROOT}\\`, '').replace(`${ROOT}/`, '').replaceAll('\\', '/')
 }
 
+/**
+ * The source with its comments removed.
+ *
+ * Without this the check is satisfied by a file that merely TALKS about its
+ * guard. Found by mutation-testing: a route handler whose doc comment said
+ * "Guarded by requireUser()" passed with the actual call deleted, which is the
+ * precise failure this script exists to prevent.
+ *
+ * Crude, and deliberately so. A `//` inside a string literal loses the rest of
+ * that line, which can only ever hide a guard and produce a false alarm — the
+ * safe direction, because somebody then reads the file.
+ */
+function withoutComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
+}
+
 function check(path, guards, what) {
   const name = relative(path)
   if (EXEMPT.has(name)) return
 
-  const source = readFileSync(path, 'utf8')
+  const source = withoutComments(readFileSync(path, 'utf8'))
   if (guards.some((guard) => source.includes(guard))) return
 
   problems.push({ name, what, guards })
@@ -106,15 +122,32 @@ for (const path of globSync('app/api/**/route.ts', { cwd: ROOT, absolute: true }
   check(path, ROUTE_GUARDS, 'an API route')
 }
 
+/**
+ * --- route handlers inside the authenticated shell ------------------------
+ *
+ * These fell through both globs above: not a `page.tsx`, not under `app/api`.
+ * A `route.ts` anywhere in `app/` is a public HTTP endpoint — the surrounding
+ * layout does not run for it, so "it is inside the authed shell" protects
+ * nothing at all. It is guarded by the session, not by a bearer token, so it
+ * wants the PAGE guards rather than the API wrapper.
+ *
+ * Found while adding the report export route. Nothing was unguarded, but only
+ * because there had never been such a file.
+ */
+for (const path of globSync('app/(*)/**/route.ts', { cwd: ROOT, absolute: true })) {
+  check(path, PAGE_GUARDS, 'a route handler inside the authenticated shell')
+}
+
 // --- report ---------------------------------------------------------------
 if (problems.length === 0) {
   const counted = [
     globSync('app/(app)/**/page.tsx', { cwd: ROOT }).length,
     globSync('app/api/**/route.ts', { cwd: ROOT }).length,
+    globSync('app/(*)/**/route.ts', { cwd: ROOT }).length,
   ]
   console.log(
-    `Guards OK — ${counted[0]} pages and ${counted[1]} API routes, every one authenticated server-side` +
-      ` (${EXEMPT.size} documented exemptions).`,
+    `Guards OK — ${counted[0]} pages, ${counted[1]} API routes and ${counted[2]} session route handler(s),` +
+      ` every one authenticated server-side (${EXEMPT.size} documented exemptions).`,
   )
   process.exit(0)
 }

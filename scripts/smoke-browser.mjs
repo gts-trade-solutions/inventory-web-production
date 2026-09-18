@@ -122,44 +122,89 @@ await visit('/reports/reorder')
 await visit('/reports/movements?from=2026-09-18&to=2026-01-01', 'reports · reversed date range')
 await visit('/reports/movements?from=not-a-date', 'reports · nonsense date')
 
-// The export, actually downloaded and actually read. A CSV endpoint that
+// The exports, actually downloaded and actually read back. An endpoint that
 // returns an empty body still produces a file, a filename and a satisfied
-// click — which is exactly how the recall pack shipped `{}` with a 200 once.
+// click — which is exactly how the recall pack shipped `{}` with a 200 once,
+// and how the first XLSX writer produced 0-byte workbooks.
 {
-  current = 'reports · CSV download'
+  current = 'reports · downloads'
   await visit('/reports/stock?grain=LOCATION', 'reports · stock by location')
 
-  const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 30_000 }).catch(() => null),
-    page
-      .getByRole('button', { name: /download csv/i })
-      .first()
-      .click(),
-  ])
+  const grab = async (linkName) => {
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 60_000 }).catch(() => null),
+      page.getByRole('link', { name: linkName }).first().click(),
+    ])
+    if (!download) return null
 
-  if (!download) {
-    failures.push({ page: '/reports/stock', kind: 'download', text: 'no file was downloaded' })
-  } else {
     const stream = await download.createReadStream()
-    let text = ''
-    for await (const chunk of stream) text += chunk
+    const chunks = []
+    for await (const chunk of stream) chunks.push(chunk)
 
-    const lines = text.trim().split('\n')
+    return { name: download.suggestedFilename(), body: Buffer.concat(chunks) }
+  }
 
-    if (!/SKU/i.test(lines[0] ?? '')) {
+  const csv = await grab(/^csv$/i)
+  if (!csv) {
+    failures.push({ page: '/reports/stock', kind: 'download', text: 'no CSV was downloaded' })
+  } else {
+    const lines = csv.body.toString('utf8').trim().split('\n')
+    if (!/SKU/i.test(lines[0] ?? '') || lines.length < 2) {
       failures.push({
         page: '/reports/stock',
         kind: 'download',
-        text: `the CSV has no header row: ${JSON.stringify(text.slice(0, 80))}`,
-      })
-    } else if (lines.length < 2) {
-      failures.push({
-        page: '/reports/stock',
-        kind: 'download',
-        text: 'the CSV has a header and no rows, but the screen showed stock',
+        text: `the CSV is not a populated report: ${JSON.stringify(lines[0]?.slice(0, 60))}, ${lines.length} line(s)`,
       })
     } else {
-      console.log(`  ✓     reports · downloaded a CSV with ${lines.length - 1} row(s)`)
+      console.log(`  ✓     reports · CSV downloaded, ${lines.length - 1} row(s)`)
+    }
+  }
+
+  const xlsx = await grab(/^excel$/i)
+  if (!xlsx) {
+    failures.push({ page: '/reports/stock', kind: 'download', text: 'no XLSX was downloaded' })
+  } else if (!xlsx.name.endsWith('.xlsx')) {
+    failures.push({
+      page: '/reports/stock',
+      kind: 'download',
+      text: `the spreadsheet was named ${xlsx.name}`,
+    })
+  } else if (xlsx.body.subarray(0, 2).toString('latin1') !== 'PK' || xlsx.body.length < 2000) {
+    // An xlsx is a zip, so it starts "PK". A file that does not is the empty
+    // download that looks like an empty report.
+    failures.push({
+      page: '/reports/stock',
+      kind: 'download',
+      text: `the spreadsheet is not a valid workbook: ${xlsx.body.length} bytes`,
+    })
+  } else {
+    console.log(`  ✓     reports · Excel downloaded, ${xlsx.body.length} bytes, opens as a zip`)
+  }
+
+  // The list exports, which stream rather than building a string. Driven from a
+  // FILTERED list, because the failure worth catching is an export that quietly
+  // ignores the filter and hands back everything.
+  current = 'movements · filtered export'
+  await visit('/movements?type=receive', 'movements · filtered to receipts')
+
+  const filtered = await grab(/^csv$/i)
+  if (!filtered) {
+    failures.push({ page: '/movements', kind: 'download', text: 'no CSV was downloaded' })
+  } else {
+    const lines = filtered.body.toString('utf8').trim().split('\r\n')
+    const typeColumn = (lines[0] ?? '').split(',').indexOf('Type')
+    const types = new Set(lines.slice(1).map((line) => line.split(',')[typeColumn]))
+
+    if (lines.length < 2) {
+      failures.push({ page: '/movements', kind: 'download', text: 'the export came back empty' })
+    } else if (types.size !== 1 || !types.has('RECEIVE')) {
+      failures.push({
+        page: '/movements',
+        kind: 'download',
+        text: `filtered to receipts but exported ${[...types].join(', ')}`,
+      })
+    } else {
+      console.log(`  ✓     movements · filtered export honoured the filter, ${lines.length - 1} row(s)`)
     }
   }
 }

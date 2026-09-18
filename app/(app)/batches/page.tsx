@@ -4,6 +4,7 @@ import { AlertTriangle, CalendarClock, ShieldAlert } from 'lucide-react'
 import { requireUser } from '@/lib/auth/guards'
 import { expirySummary, listBatches, type ExpiryState } from '@/lib/services/traceability'
 import { PageHeader } from '@/components/page-header'
+import { ReportDownload } from '../reports/download'
 import { EmptyState } from '@/components/empty-state'
 import { ExpiryBadge } from '@/components/expiry-badge'
 import { Badge } from '@/components/ui/badge'
@@ -49,6 +50,7 @@ export default async function BatchesPage({
       <PageHeader
         title="Batches & expiry"
         description="Every lot in the warehouse, soonest to expire first."
+        actions={<ReportDownload report="batches" params={params} />}
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">

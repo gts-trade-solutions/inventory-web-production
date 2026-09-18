@@ -4,7 +4,6 @@ import { reorderReport } from '@/lib/services/reports'
 import { PageHeader } from '@/components/page-header'
 import { ReportFilters, filterOptions } from '../filters'
 import { ReportDownload } from '../download'
-import { reorderCsvAction } from '../actions'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -64,12 +63,7 @@ export default async function ReorderReportPage({
             </>
           )}
         </p>
-        <ReportDownload
-          build={reorderCsvAction.bind(null, {
-            siteId: params.siteId,
-            categoryId: params.categoryId,
-          })}
-        />
+        <ReportDownload report="reorder" params={params} />
       </div>
 
       {report.rows.length === 0 ? (

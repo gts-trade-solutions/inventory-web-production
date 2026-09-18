@@ -1,53 +1,53 @@
-'use client'
-
-import { useState, useTransition } from 'react'
-import { Download, Loader2 } from 'lucide-react'
-import type { ReportCsv } from './actions'
+import { Download } from 'lucide-react'
+import type { ReportKey } from '@/lib/services/report-export'
+import type { ListKey } from '@/lib/services/list-export'
 import { Button } from '@/components/ui/button'
 
 /**
- * Downloads a report as CSV.
+ * Download links for a report.
  *
- * The file is built on the server by the same call that rendered the table, and
- * handed back as a string for the browser to save. That keeps the export on the
- * session-authenticated Server Action path rather than opening a second route
- * with its own guard to get wrong.
+ * Plain anchors to the export route, not a button that fetches. The browser
+ * handles the download, `Content-Disposition` names the file, and the XLSX
+ * arrives as a stream rather than being buffered into memory first — none of
+ * which is possible through a Server Action returning a value.
+ *
+ * It also means the export URL is a real URL: it can be bookmarked, scripted,
+ * or handed to somebody who needs the same figures tomorrow.
  */
-export function ReportDownload({ build }: { build: () => Promise<ReportCsv> }) {
-  const [pending, start] = useTransition()
-  const [error, setError] = useState<string | null>(null)
+export function ReportDownload({
+  report,
+  params,
+}: {
+  report: ReportKey | ListKey
+  /** The filters the screen is currently showing, so the file matches it. */
+  params: Record<string, string | undefined>
+}) {
+  const query = new URLSearchParams({ report })
 
-  const download = () => {
-    setError(null)
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value)
+  }
 
-    start(async () => {
-      try {
-        const { filename, csv } = await build()
-
-        // The BOM is what makes Excel open a UTF-8 CSV correctly. Without it,
-        // any non-ASCII name arrives mangled — and the person who opens the
-        // file has no way to tell that the export was fine.
-        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
-        const url = URL.createObjectURL(blob)
-
-        const link = document.createElement('a')
-        link.href = url
-        link.download = `${filename}-${new Date().toISOString().slice(0, 10)}.csv`
-        link.click()
-
-        URL.revokeObjectURL(url)
-      } catch {
-        setError('The export could not be built. Try narrowing the filters.')
-      }
-    })
+  const href = (format: 'csv' | 'xlsx') => {
+    const withFormat = new URLSearchParams(query)
+    withFormat.set('format', format)
+    return `/reports/export?${withFormat.toString()}`
   }
 
   return (
-    <div className="flex items-center gap-3">
-      {error && <span className="text-sm text-destructive">{error}</span>}
-      <Button type="button" variant="outline" onClick={download} disabled={pending}>
-        {pending ? <Loader2 className="animate-spin" /> : <Download />}
-        Download CSV
+    <div className="flex items-center gap-2">
+      <Button asChild variant="outline" size="sm">
+        {/* download, so a browser that would rather render the CSV saves it. */}
+        <a href={href('csv')} download>
+          <Download />
+          CSV
+        </a>
+      </Button>
+      <Button asChild variant="outline" size="sm">
+        <a href={href('xlsx')} download>
+          <Download />
+          Excel
+        </a>
       </Button>
     </div>
   )

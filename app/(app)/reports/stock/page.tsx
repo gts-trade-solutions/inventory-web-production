@@ -4,7 +4,6 @@ import { stockOnHand, type StockGrain } from '@/lib/services/reports'
 import { PageHeader } from '@/components/page-header'
 import { ReportFilters, filterOptions } from '../filters'
 import { ReportDownload } from '../download'
-import { stockCsvAction } from '../actions'
 import {
   Table,
   TableBody,
@@ -58,13 +57,7 @@ export default async function StockReportPage({
           item{report.totals.items === 1 ? '' : 's'} · {report.totals.quantity} unit
           {report.totals.quantity === 1 ? '' : 's'} on hand
         </p>
-        <ReportDownload
-          build={stockCsvAction.bind(null, {
-            grain,
-            siteId: params.siteId,
-            categoryId: params.categoryId,
-          })}
-        />
+        <ReportDownload report="stock" params={{ ...params, grain }} />
       </div>
 
       {report.rows.length === 0 ? (

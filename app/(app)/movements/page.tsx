@@ -4,6 +4,7 @@ import { MovementType } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
 import { requireUser } from '@/lib/auth/guards'
 import { PageHeader } from '@/components/page-header'
+import { ReportDownload } from '../reports/download'
 import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -79,6 +80,7 @@ export default async function MovementsPage({
       <PageHeader
         title="Movements"
         description="Every stock change ever recorded, newest first. Nothing here can be edited or deleted."
+        actions={<ReportDownload report="movements-detail" params={params} />}
       />
 
       <form className="mb-4 flex flex-wrap items-center gap-2">

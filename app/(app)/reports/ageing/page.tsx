@@ -4,7 +4,6 @@ import { stockAgeing } from '@/lib/services/reports'
 import { PageHeader } from '@/components/page-header'
 import { ReportFilters, filterOptions } from '../filters'
 import { ReportDownload } from '../download'
-import { ageingCsvAction } from '../actions'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Info } from 'lucide-react'
 import {
@@ -73,12 +72,7 @@ export default async function AgeingReportPage({
             {report.unknown.quantity || '—'}
           </span>
         </div>
-        <ReportDownload
-          build={ageingCsvAction.bind(null, {
-            siteId: params.siteId,
-            categoryId: params.categoryId,
-          })}
-        />
+        <ReportDownload report="ageing" params={params} />
       </div>
 
       {report.rows.length === 0 ? (

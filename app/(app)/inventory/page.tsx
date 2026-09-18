@@ -5,6 +5,7 @@ import type { Prisma } from '@prisma/client'
 import { Layers, Package, Plus, ScanBarcode } from 'lucide-react'
 import { requireUser, roleAtLeast } from '@/lib/auth/guards'
 import { PageHeader } from '@/components/page-header'
+import { ReportDownload } from '../reports/download'
 import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -90,14 +91,19 @@ export default async function InventoryPage({
           search ? ` matching “${search}”` : ''
         }`}
         actions={
-          roleAtLeast(user.role, UserRole.ADMIN) ? (
-            <Button asChild>
-              <Link href="/inventory/new">
-                <Plus />
-                New item
-              </Link>
-            </Button>
-          ) : null
+          <>
+            {/* The export carries the current search, so the file matches the
+                list on screen rather than quietly being everything. */}
+            <ReportDownload report="items" params={params} />
+            {roleAtLeast(user.role, UserRole.ADMIN) ? (
+              <Button asChild>
+                <Link href="/inventory/new">
+                  <Plus />
+                  New item
+                </Link>
+              </Button>
+            ) : null}
+          </>
         }
       />
 

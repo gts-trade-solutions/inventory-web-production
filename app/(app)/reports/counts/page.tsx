@@ -4,7 +4,6 @@ import { countAccuracy } from '@/lib/services/reports'
 import { PageHeader } from '@/components/page-header'
 import { ReportFilters, filterOptions } from '../filters'
 import { ReportDownload } from '../download'
-import { countsCsvAction } from '../actions'
 import { defaultRange, endOfDay } from '../range'
 import {
   Table,
@@ -58,7 +57,7 @@ export default async function CountAccuracyPage({
           </strong>{' '}
           overall
         </p>
-        <ReportDownload build={countsCsvAction.bind(null, { from, to, siteId: params.siteId })} />
+        <ReportDownload report="counts" params={{ ...params, from, to }} />
       </div>
 
       {report.rows.length === 0 ? (

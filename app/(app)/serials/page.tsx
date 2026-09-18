@@ -6,6 +6,7 @@ import { requireUser } from '@/lib/auth/guards'
 import { isEpc } from '@/lib/domain/sgtin96'
 import { listSerialUnits } from '@/lib/services/traceability'
 import { PageHeader } from '@/components/page-header'
+import { ReportDownload } from '../reports/download'
 import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -51,6 +52,7 @@ export default async function SerialsPage({
       <PageHeader
         title="Serial units"
         description="Individually tracked units. Search by serial, item, batch — or paste a scanned RFID tag."
+        actions={<ReportDownload report="serials" params={params} />}
       />
 
       <form className="mb-4 flex flex-wrap items-center gap-2">
