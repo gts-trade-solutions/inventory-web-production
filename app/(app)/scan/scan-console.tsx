@@ -6,6 +6,8 @@ import { ArrowRight, Layers, MapPin, Package, Radio, ScanLine, SearchX, Send } f
 import { scanAction, type ScanState } from './actions'
 import type { ScanResolution } from '@/lib/services/scan'
 import { KeyboardWedge, shouldIgnoreTarget } from '@/lib/devices/browser/keyboard-wedge'
+import type { BarcodeScan } from '@/lib/devices/types'
+import { ScannerConnection } from './scanner-connection'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -84,11 +86,24 @@ export function ScanConsole({ demoBarcodes }: { demoBarcodes: string[] }) {
     }
   }, [submit])
 
+  // A Tier 2 scan takes the same path as a Tier 1 one. The tier decides what we
+  // KNOW about a scan, never what happens to it.
+  const onDirectScan = useCallback(
+    (scan: BarcodeScan) => {
+      setArmed(true)
+      setPendingChars('')
+      submit(scan.data)
+    },
+    [submit],
+  )
+
   const latest = state.history[0]
 
   return (
     <div className="space-y-5">
       <ScanIndicator armed={armed} pending={pendingChars} busy={pending} />
+
+      <ScannerConnection onScan={onDirectScan} />
 
       <form
         ref={formRef}

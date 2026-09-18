@@ -295,6 +295,31 @@ connector verified against a mock proves only that we can write a mock.
 These run in CI on every push. A connector that passes them is not _proven_ to work with a given device, but
 every failure mode it can be tested for without hardware has been tested.
 
+### 11.1b What is built, and what each is tested against
+
+| Connector | Built | Tested against |
+| --------- | ----- | -------------- |
+| Printer, TCP 9100 | Yes | A real Node TCP server that reads the byte stream and fails the way printers fail |
+| Printer, Browser Print (Tier 3) | Yes | Injected fetch: endpoint choice, absent utility, refusals, timeouts |
+| Printer, simulated | Yes | Used by Demo mode and every print test |
+| Fixed RFID, LLRP | Yes | A TCP server that parses our real LLRP messages and answers with framed responses |
+| Fixed RFID, ZIoT over HTTP | Yes | Recorded-shape payloads through `POST /v1/readers/ziot` |
+| Fixed RFID, ZIoT over MQTT | **Not yet** | Deferred on purpose — see below |
+| Scanner, keyboard wedge (Tier 1) | Yes | Synthetic keystrokes at realistic and adversarial timings |
+| Scanner, WebHID (Tier 2) | Yes | Synthetic HID POS reports, including chunked and malformed ones |
+| RFID reader, simulated | Yes | Drives the whole cycle-count demo |
+
+**Why MQTT is not wired up.** The broker, the topic layout and the credentials are decisions that belong
+to the site’s network, and they are open questions until bring-up (Q7). The part that would be *wrong* —
+reading the firmware’s JSON into our tag-read shape — is already built and tested in
+`lib/devices/ziot/payload.ts`, and is shared by every ZIoT transport. Adding MQTT later is a subscription
+that calls the same parser, not a new connector.
+
+**A limit of the WebHID work.** Published HID report descriptors are a good guide, not a guarantee. A model
+that lays its reports out differently will parse wrongly, and only the device in hand will show that. What
+the tests buy is that everything else — framing, chunking across reports, symbology decoding, rejecting
+garbage rather than turning it into a barcode — already works when one arrives.
+
 ### 11.2 What genuinely cannot be tested without devices
 
 Stated plainly, so nobody is surprised on hardware day:
