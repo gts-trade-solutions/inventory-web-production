@@ -24,6 +24,7 @@
     "verify": "npm run typecheck && npm run lint && npm run check:client && npm run check:guards && npm test",
     "check:client": "node scripts/check-client-boundaries.mjs",
     "check:guards": "node scripts/check-guards.mjs",
+    "build:verify": "node scripts/build-verify.mjs",
     "smoke": "node --experimental-strip-types scripts/smoke-browser.mjs",
     "check:api": "node scripts/check-api.mjs"
   },

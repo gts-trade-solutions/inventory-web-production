@@ -119,17 +119,26 @@ class EventBus {
 }
 
 /**
- * One bus per process.
+ * One bus per process — in every environment, not only in development.
  *
- * Stashed on globalThis because Next's dev server re-evaluates modules on every
- * hot reload, and a fresh bus each time would silently disconnect every open
- * console — the same reason the Prisma client is kept there.
+ * Stashed on globalThis for two reasons, and the second is the one that bit.
+ *
+ * In development, Next re-evaluates modules on every hot reload, and a fresh
+ * bus each time would silently disconnect every open console.
+ *
+ * In PRODUCTION, Next's build puts route handlers and Server Actions in
+ * separate bundles, and a module imported by both is instantiated once in each.
+ * Guarding this assignment with `NODE_ENV !== 'production'` therefore gave the
+ * SSE route its own bus and the self-test action another — the console
+ * connected, stayed connected, and received nothing for ever. It worked
+ * perfectly in dev, which is exactly why it survived until the first production
+ * build.
  */
 const globalForEvents = globalThis as unknown as { __eventBus?: EventBus }
 
 export const events: EventBus = globalForEvents.__eventBus ?? new EventBus()
 
-if (process.env.NODE_ENV !== 'production') globalForEvents.__eventBus = events
+globalForEvents.__eventBus = events
 
 /** Whether an event should reach a subscriber. Mode is not negotiable. */
 export function isVisibleTo(

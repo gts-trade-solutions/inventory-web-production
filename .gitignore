@@ -7,6 +7,7 @@
 /.next/
 /.next-verify/
 /.next-smoke/
+/.next-prod/
 /out/
 next-env.d.ts
 
