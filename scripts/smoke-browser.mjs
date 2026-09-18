@@ -362,6 +362,34 @@ if ((await selfTest.count()) === 0) {
   await visit('/admin/audit', 'admin · audit log')
   await visit('/admin/reason-codes', 'admin · reason codes')
 
+  current = 'admin · people'
+  await visit('/admin/users', 'admin · people')
+
+  await page.getByRole('button', { name: /add someone/i }).click()
+  await page.fill('#name', 'Smoke Test Starter')
+  await page.fill('#email', `smoke.${Date.now()}@inventory.local`)
+  await page.getByRole('button', { name: /^create account$/i }).click()
+
+  // The generated password is shown once. If it ever stops appearing, an admin
+  // has created an account nobody can sign in to.
+  await page.getByText(/shown once, and not recoverable/i).first().waitFor({ timeout: 30_000 })
+  console.log('  ✓     admin · created an account and showed its password once')
+
+  // The self-lockout guard, from the UI rather than the service: an admin must
+  // not be able to demote or deactivate themselves.
+  const ownRowControls = await page
+    .locator('tr', { hasText: ADMIN.email })
+    .getByRole('button', { name: /deactivate/i })
+    .count()
+  if (ownRowControls > 0) {
+    failures.push({
+      page: '/admin/users',
+      kind: 'lockout',
+      text: 'an admin is offered a control to deactivate their own account',
+    })
+  }
+  console.log('  ✓     admin · cannot deactivate their own account')
+
   current = 'devices · register'
   await visit('/devices', '/devices as admin (again)')
   const add = page.getByRole('button', { name: /add a printer or reader/i }).first()

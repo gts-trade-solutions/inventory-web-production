@@ -66,7 +66,12 @@ export async function seedWarehouse(): Promise<Warehouse> {
 
   const user = await prisma.user.upsert({
     where: { email: 'tester@inventory.local' },
-    update: {},
+    // Reset, not left alone. A test that deactivates or demotes this account
+    // would otherwise leave it that way for every test after it — which is
+    // exactly what happened: the user-admin tests started failing with "this is
+    // the only active administrator" because an earlier case had deactivated
+    // the one the seed was supposed to guarantee.
+    update: { active: true, role: UserRole.ADMIN, deletedAt: null },
     create: {
       id: randomUUID(),
       email: 'tester@inventory.local',

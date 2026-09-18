@@ -10,6 +10,7 @@ import {
   Printer,
   ScanLine,
   ScrollText,
+  Users,
   Settings,
   Smartphone,
   Layers,
@@ -81,6 +82,12 @@ export const NAV_SECTIONS: NavSection[] = [
         minimumRole: UserRole.SUPERVISOR,
       },
       { href: '/reports', label: 'Reports', icon: BarChart3, comingSoon: true },
+      {
+        href: '/admin/users',
+        label: 'People',
+        icon: Users,
+        minimumRole: UserRole.ADMIN,
+      },
       {
         href: '/admin/reason-codes',
         label: 'Reason codes',
