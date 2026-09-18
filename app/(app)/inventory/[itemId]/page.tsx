@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { TrackingMode, UserRole } from '@prisma/client'
-import { ArrowLeft, Pencil, Plus } from 'lucide-react'
+import { ArrowLeft, Pencil, Plus, Printer } from 'lucide-react'
 import { requireUser, roleAtLeast } from '@/lib/auth/guards'
 import { itemStock, listBatches } from '@/lib/services/traceability'
 import { PageHeader } from '@/components/page-header'
@@ -119,6 +119,14 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ ite
                 </Link>
               </Button>
             )}
+            {/* Labelling is part of receiving, so it belongs next to the work
+                rather than behind a separate admin screen. */}
+            <Button asChild variant="outline">
+              <Link href={`/labels?item=${item.id}`}>
+                <Printer />
+                Print label
+              </Link>
+            </Button>
             <Button asChild>
               <Link href={`/movements/new?item=${item.id}`}>
                 <Plus />

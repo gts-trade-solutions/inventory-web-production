@@ -106,11 +106,26 @@ await visit('/counts')
 
 // Follow real links rather than hard-coded ids, so the test breaks if the list
 // pages stop linking anywhere.
+//
+// The href must end in a UUID. The first /inventory/ link on that page is
+// "/inventory/new" — the Add item button — so taking the first match meant
+// "item detail" was really visiting the new-item form, and the movement-form
+// checks below were run against an item id of the literal string "new". They
+// returned 200 and proved nothing.
+const UUID_HREF = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const firstRecordHref = async (pattern) => {
+  const hrefs = await page.locator(`a[href^="${pattern}"]`).evaluateAll((anchors) =>
+    anchors.map((anchor) => anchor.getAttribute('href')),
+  )
+  return hrefs.find((href) => href && UUID_HREF.test(href)) ?? null
+}
+
 const followFirst = async (listPath, pattern, label) => {
   await visit(listPath)
-  const href = await page.locator(`a[href^="${pattern}"]`).first().getAttribute('href')
+  const href = await firstRecordHref(pattern)
   if (!href) {
-    failures.push({ page: listPath, kind: 'no link', text: `nothing linking to ${pattern}` })
+    failures.push({ page: listPath, kind: 'no link', text: `no record linked from ${pattern}` })
     return
   }
   await visit(href, label)
@@ -122,9 +137,11 @@ await followFirst('/serials', '/serials/', 'serial life history')
 
 // The movement form is the most interactive page, so it is the most likely to
 // break on hydration.
-const itemHref = await page
-  .goto(`${BASE}/inventory`)
-  .then(() => page.locator('a[href^="/inventory/"]').first().getAttribute('href'))
+await page.goto(`${BASE}/inventory`, { waitUntil: 'networkidle' })
+const itemHref = await firstRecordHref('/inventory/')
+if (!itemHref) {
+  failures.push({ page: '/inventory', kind: 'no link', text: 'no item to drive the forms with' })
+}
 const itemId = itemHref?.split('/').pop()
 for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
   await visit(`/movements/new?item=${itemId}&kind=${kind}`, `movement form · ${kind}`)
@@ -178,6 +195,36 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
       }
     }
   }
+}
+
+// --- printing a label ----------------------------------------------------
+// Printed for real, not just rendered. The preview is parsed from the bytes
+// that go to the printer, so a broken render is a broken job.
+{
+  await visit(`/labels?item=${itemId}`, '/labels')
+
+  current = 'labels · preview'
+  // The SVG only appears once the server has rendered the ZPL.
+  await page.getByRole('img', { name: /label preview/i }).first().waitFor({ timeout: 30_000 })
+
+  const bars = await page.locator('svg[role="img"] rect').count()
+  if (bars < 30) {
+    // An EAN-13 is 95 modules; roughly 30 of them are bars. A preview with a
+    // handful of rectangles means the barcode did not render.
+    failures.push({
+      page: '/labels',
+      kind: 'preview',
+      text: `label preview drew only ${bars} shapes — the barcode probably did not render`,
+    })
+  }
+  console.log(`  ✓     labels · preview drew ${bars} shapes`)
+
+  current = 'labels · print'
+  await page.getByRole('button', { name: /^print$/i }).first().click()
+  await page.getByText(/PRN-\d{4}-\d{6}/).first().waitFor({ timeout: 30_000 })
+
+  const receipt = await page.getByText(/PRN-\d{4}-\d{6}/).first().textContent()
+  console.log(`  ✓     labels · printed — ${receipt?.trim().slice(0, 70)}`)
 }
 
 // --- devices -------------------------------------------------------------

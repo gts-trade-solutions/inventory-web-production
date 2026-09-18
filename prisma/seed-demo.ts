@@ -689,7 +689,9 @@ async function main() {
   const itemLabel = [
     '^XA^CI28^PW812^LL406',
     '^FO30,30^A0N,40,40^FB752,2,0,L^FD{{itemName}}^FS',
-    '^FO30,125^A0N,28,28^FDSKU {{sku}}   LOC {{location}}^FS',
+    // Only fields an item alone can supply. A placeholder the operator has no
+    // way to fill turns the print screen into a refusal they cannot act on.
+    '^FO30,125^A0N,28,28^FDSKU {{sku}}^FS',
     // ^BE is EAN-13: the printer takes 12 digits and adds the check digit.
     '^FO30,175^BY3,2,150^BEN,150,Y,N^FD{{barcode12}}^FS',
     '^XZ',

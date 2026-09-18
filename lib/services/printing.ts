@@ -9,6 +9,7 @@ import { TcpPrinter } from '@/lib/devices/server/tcp-printer'
 import {
   ZplError,
   labelCount,
+  placeholdersIn,
   renderTemplate,
   withCopies,
   withRfidEncoding,
@@ -247,6 +248,80 @@ export function splitAddress(address: string): [string, number | undefined] {
   if (!Number.isFinite(port) || port <= 0 || port > 65_535) return [address, undefined]
 
   return [address.slice(0, index), port]
+}
+
+/**
+ * Fills the fields a template asks for, from whatever it is being printed for.
+ *
+ * The template declares what it needs through its placeholders and this
+ * supplies them, so adding a field to a label is a database edit rather than a
+ * code change (WADR-014). A placeholder nothing here knows about is left unset,
+ * and `renderTemplate` then refuses the job by name — which is the right
+ * failure, because the alternative is a label with a blank where the SKU
+ * should be.
+ */
+export async function labelFieldsFor(
+  db: PrismaClient,
+  input: { templateId: string; itemId?: string | null; batchId?: string | null; locationId?: string | null },
+): Promise<{ fields: LabelFields; missing: string[] }> {
+  const template = await db.labelTemplate.findUnique({
+    where: { id: input.templateId },
+    select: { zplBody: true },
+  })
+  if (!template) throw new ApiError(ErrorCode.NOT_FOUND, 'That label template does not exist.')
+
+  const [item, batch, location] = await Promise.all([
+    input.itemId
+      ? db.item.findUnique({
+          where: { id: input.itemId },
+          select: {
+            sku: true,
+            name: true,
+            unit: true,
+            barcodes: { select: { barcode: true, type: true, isPrimary: true } },
+          },
+        })
+      : null,
+    input.batchId
+      ? db.batch.findUnique({
+          where: { id: input.batchId },
+          select: { batchNo: true, expiryDate: true, mfgDate: true },
+        })
+      : null,
+    input.locationId
+      ? db.location.findUnique({ where: { id: input.locationId }, select: { code: true, name: true } })
+      : null,
+  ])
+
+  const ean13 = item?.barcodes.find((barcode) => barcode.type === 'EAN13' && barcode.isPrimary)
+    ?? item?.barcodes.find((barcode) => barcode.type === 'EAN13')
+
+  const fields: LabelFields = {
+    itemName: item?.name,
+    sku: item?.sku,
+    unit: item?.unit,
+    barcode: ean13?.barcode,
+    // ^BE makes the printer compute the check digit, so it is given twelve.
+    barcode12: ean13?.barcode.slice(0, 12),
+    batchNo: batch?.batchNo,
+    expiryDate: batch?.expiryDate ? isoDate(batch.expiryDate) : undefined,
+    mfgDate: batch?.mfgDate ? isoDate(batch.mfgDate) : undefined,
+    location: location?.code,
+    code: location?.code,
+    locationName: location?.name,
+    printedOn: isoDate(new Date()),
+  }
+
+  const missing = placeholdersIn(template.zplBody).filter((name) => {
+    const value = fields[name]
+    return value === null || value === undefined || value === ''
+  })
+
+  return { fields, missing }
+}
+
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10)
 }
 
 /** Print history, newest first — the audit trail for every physical tag. */
