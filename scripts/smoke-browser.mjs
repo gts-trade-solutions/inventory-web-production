@@ -130,6 +130,56 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
   await visit(`/movements/new?item=${itemId}&kind=${kind}`, `movement form · ${kind}`)
 }
 
+// --- an RFID cycle count, start to finish --------------------------------
+// The flagship workflow. Driven end to end because every piece works in
+// isolation and the question that matters is whether they work together.
+{
+  await visit('/counts')
+
+  const start = page.getByRole('button', { name: /start count|start/i }).first()
+  if ((await start.count()) === 0) {
+    failures.push({ page: '/counts', kind: 'missing', text: 'no way to start a count' })
+  } else {
+    current = 'counts · start'
+
+    // Pick the first location offered, and RFID as the method where available.
+    const locationSelect = page.locator('select[name="locationId"]').first()
+    if (await locationSelect.count()) {
+      const value = await locationSelect.locator('option').nth(1).getAttribute('value')
+      if (value) await locationSelect.selectOption(value)
+    }
+    const methodSelect = page.locator('select[name="method"]').first()
+    if (await methodSelect.count()) await methodSelect.selectOption('RFID').catch(() => {})
+
+    await start.click()
+    await page.waitForURL(/\/counts\/[0-9a-f-]{36}/, { timeout: 30_000 })
+    console.log('  ✓     counts · session started')
+
+    current = 'counts · sweep'
+    const sweepButton = page.getByRole('button', { name: /sweep with rfid/i }).first()
+    if ((await sweepButton.count()) === 0) {
+      failures.push({ page: 'counts', kind: 'missing', text: 'no RFID sweep button' })
+    } else {
+      await sweepButton.click()
+      // Wait for the reader's own sentence, which only exists after the sweep.
+      await page.getByText(/saw \d+ tag|saw no tags|reader/i).first().waitFor({ timeout: 30_000 })
+
+      const note = await page.getByText(/saw \d+ tag|saw no tags/i).first().textContent()
+      console.log(`  ✓     counts · sweep — ${note?.trim()}`)
+
+      if (!/simulation/i.test(note ?? '')) {
+        // The badge is not optional. A simulated read that does not say so is
+        // how a demo gets mistaken for a live system.
+        failures.push({
+          page: 'counts · sweep',
+          kind: 'honesty',
+          text: `sweep result did not say it was simulated: ${note}`,
+        })
+      }
+    }
+  }
+}
+
 // --- devices -------------------------------------------------------------
 // The self-test is clicked, not just rendered. It is a server action driving a
 // device connector, and "the page loaded" says nothing about whether pressing

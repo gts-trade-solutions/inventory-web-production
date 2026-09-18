@@ -384,6 +384,21 @@ async function expectedAtLocation(tx: Db, locationId: string): Promise<Map<strin
 }
 
 /** Derives counted quantities from the de-duplicated tag reads. */
+/**
+ * What the tags read so far add up to, per item and batch.
+ *
+ * Exported so the counting sheet can show the operator what the reader found
+ * BEFORE they submit. Deriving it twice — once for the screen and once inside
+ * submit — would let the two disagree, and the number on the screen is the one
+ * somebody is accountable for.
+ */
+export function countedFromSessionTags(
+  db: PrismaClient,
+  sessionId: string,
+): Promise<CountedLine[]> {
+  return countedFromTags(db, sessionId)
+}
+
 async function countedFromTags(tx: Db, sessionId: string): Promise<CountedLine[]> {
   const rows = await tx.countTag.findMany({
     where: { sessionId, itemId: { not: null } },

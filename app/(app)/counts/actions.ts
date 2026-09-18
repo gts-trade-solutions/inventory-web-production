@@ -7,6 +7,7 @@ import { CountMethod, UserRole } from '@prisma/client'
 import { z } from 'zod'
 import { requireRole, requireUser } from '@/lib/auth/guards'
 import { approveCount, rejectCount, startCount, submitCount } from '@/lib/services/counts'
+import { sweepLocation, type SweepResult } from '@/lib/services/rfid-count'
 import { resolveScan } from '@/lib/services/scan'
 
 /**
@@ -73,6 +74,29 @@ export async function resolveCountScanAction(code: string) {
   if (!siteId) return null
 
   return resolveScan(user.db, code, siteId)
+}
+
+/**
+ * Sweeps the location with an RFID reader and folds the result into the sheet.
+ *
+ * Returns what was found rather than submitting it. The operator sees the
+ * reader's figures, can correct them, and remains the one accountable for what
+ * is submitted — a sweep is evidence, not a decision.
+ */
+export async function sweepWithReaderAction(sessionId: string): Promise<
+  { ok: true; result: SweepResult } | { ok: false; error: string }
+> {
+  const user = await requireUser()
+
+  if (!z.string().uuid().safeParse(sessionId).success) {
+    return { ok: false, error: 'That count session does not exist.' }
+  }
+
+  try {
+    return { ok: true, result: await sweepLocation(user.db, sessionId) }
+  } catch (error) {
+    return { ok: false, error: messageOf(error, 'The reader could not be used.') }
+  }
 }
 
 const countedSchema = z.array(

@@ -1,8 +1,13 @@
 'use client'
 
 import { startTransition, useActionState, useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, CheckCircle2, Loader2, Minus, Plus, ScanLine, Send } from 'lucide-react'
-import { resolveCountScanAction, submitCountAction, type CountActionState } from '../actions'
+import { AlertCircle, CheckCircle2, Loader2, Minus, Plus, Radio, ScanLine, Send } from 'lucide-react'
+import {
+  resolveCountScanAction,
+  submitCountAction,
+  sweepWithReaderAction,
+  type CountActionState,
+} from '../actions'
 import type { CountRow } from '@/lib/services/count-queries'
 import { KeyboardWedge, shouldIgnoreTarget } from '@/lib/devices/browser/keyboard-wedge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -81,6 +86,72 @@ export function CountingSheet({
 
   const [scanNote, setScanNote] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
+  const [sweeping, setSweeping] = useState(false)
+  const [sweepNote, setSweepNote] = useState<{ text: string; ok: boolean } | null>(null)
+
+  /**
+   * Sweeps the bay with the RFID reader and folds the result in.
+   *
+   * The reader's figures REPLACE the tally for the lines it covers, rather than
+   * adding to them: tags are de-duplicated per session, so what comes back is
+   * everything this count has read, not just this sweep. Adding would double a
+   * second sweep.
+   *
+   * Lines the reader did not cover are left alone — an untagged item counted by
+   * barcode is not contradicted by a reader that cannot see it.
+   */
+  const sweep = useCallback(async () => {
+    setSweeping(true)
+    setSweepNote(null)
+
+    try {
+      const outcome = await sweepWithReaderAction(sessionId)
+
+      if (!outcome.ok) {
+        setSweepNote({ text: outcome.error, ok: false })
+        return
+      }
+
+      const { result } = outcome
+      setSweepNote({ text: result.message, ok: result.distinctTags > 0 })
+
+      setTallies((current) => {
+        const next = current.map((tally) => {
+          const line = result.counted.find(
+            (candidate) =>
+              candidate.itemId === tally.itemId && candidate.batchId === tally.batchId,
+          )
+          return line ? { ...tally, counted: line.quantity } : tally
+        })
+
+        // Tags resolving to something the sheet has never heard of: a stray
+        // from another bay, which is a real finding in the other direction.
+        const strays = result.counted
+          .filter(
+            (line) =>
+              !current.some(
+                (tally) => tally.itemId === line.itemId && tally.batchId === line.batchId,
+              ),
+          )
+          .map((line) => ({
+            key: keyOf(line.itemId, line.batchId),
+            itemId: line.itemId,
+            batchId: line.batchId,
+            itemName: line.itemName,
+            itemSku: line.itemSku,
+            unit: line.unit,
+            batchNo: line.batchNo,
+            expected: 0,
+            counted: line.quantity,
+            unexpected: true,
+          }))
+
+        return [...next, ...strays]
+      })
+    } finally {
+      setSweeping(false)
+    }
+  }, [sessionId])
 
   const setCounted = (key: string, next: number) =>
     setTallies((current) =>
@@ -206,6 +277,38 @@ export function CountingSheet({
           <Badge variant="warn">{progress.short} short</Badge>
           <Badge variant="secondary">{progress.over} over</Badge>
         </span>
+      </div>
+
+      {/*
+        An RFID sweep reads the whole bay at once. A real reader misses tags at
+        the back of a shelf, so sweeping again genuinely picks up more — which
+        is why this stays available rather than running once and disappearing.
+      */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" variant="outline" onClick={() => void sweep()} disabled={sweeping}>
+          {sweeping ? (
+            <>
+              <Loader2 className="mr-2 size-4 animate-spin" />
+              Sweeping…
+            </>
+          ) : (
+            <>
+              <Radio className="mr-2 size-4" />
+              Sweep with RFID reader
+            </>
+          )}
+        </Button>
+
+        {sweepNote && (
+          <span
+            className={cn(
+              'text-sm',
+              sweepNote.ok ? 'text-muted-foreground' : 'text-destructive',
+            )}
+          >
+            {sweepNote.text}
+          </span>
+        )}
       </div>
 
       <div className="rounded-lg border bg-card">

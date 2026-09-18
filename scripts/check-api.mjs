@@ -418,6 +418,29 @@ console.log('\n=== count lifecycle ===')
   })
   log('retried start is idempotent', retried.body?.docNo === start.body?.docNo)
 
+  // Sweep the bay with the fixed reader before counting by hand.
+  const sweep = await call(`/counts/${sessionId}/sweep`, {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({}),
+  })
+  log('POST /counts/:id/sweep', sweep.status)
+  log('  reader', `${sweep.body?.device}${sweep.body?.simulated ? ' [simulated]' : ''}`)
+  log('  distinct tags', sweep.body?.distinctTags)
+  log('  says it is a simulation', /simulation/i.test(sweep.body?.message ?? ''))
+
+  // Sweeping again must not double the tally: tags are de-duplicated per
+  // session, so the result is cumulative, not incremental.
+  const again = await call(`/counts/${sessionId}/sweep`, {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({}),
+  })
+  const firstTotal = (sweep.body?.counted ?? []).reduce((sum, l) => sum + l.quantity, 0)
+  const secondTotal = (again.body?.counted ?? []).reduce((sum, l) => sum + l.quantity, 0)
+  log('re-sweep does not double the tally', secondTotal >= firstTotal && secondTotal <= 20)
+  log('  duplicates reported, not refused', again.body?.duplicates > 0)
+
   // A count is BLIND over the whole location, so a partial submission proposes
   // writing off everything it omits. Counting the whole bin, one line short.
   const atLocation = pulled.body.stockLevels.filter(
