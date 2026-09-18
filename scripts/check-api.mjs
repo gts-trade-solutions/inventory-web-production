@@ -565,16 +565,21 @@ console.log('\n=== rate limiting ===')
   // Sign-in is the endpoint worth attacking: unthrottled it is an offer to try
   // every password in a list. Driven until it actually refuses, because a
   // limiter nobody has seen fire is decoration.
+  // Deliberately NOT the admin account this script signs in as.
+  //
+  // The rule is per account, so hammering admin leaves admin locked out for
+  // the rest of the minute — and every later section that signs in again gets
+  // a 429, no token, and a string of 401s that look like broken endpoints.
+  // That is exactly what happened, and it made the recall pack and the
+  // maintenance sweep look broken when they were fine.
+  const victim = 'operator@inventory.local'
+
   let refused = null
   for (let attempt = 0; attempt < 25 && !refused; attempt++) {
     const response = await call('/auth/token', {
       method: 'POST',
       // One account, hammered — which is what the per-account rule guards.
-      body: JSON.stringify({
-        email: 'admin@inventory.local',
-        password: `wrong-${attempt}`,
-        mode: 'DEMO',
-      }),
+      body: JSON.stringify({ email: victim, password: `wrong-${attempt}`, mode: 'DEMO' }),
     })
     if (response.status === 429) refused = response
   }
@@ -589,7 +594,7 @@ console.log('\n=== rate limiting ===')
   // the throttle becomes an account oracle.
   const real = await call('/auth/token', {
     method: 'POST',
-    body: JSON.stringify({ email: 'admin@inventory.local', password: 'demo1234', mode: 'DEMO' }),
+    body: JSON.stringify({ email: victim, password: 'demo1234', mode: 'DEMO' }),
   })
   // Even the CORRECT password is refused once the account is throttled, which
   // is the point: an attacker cannot tell a right guess from a wrong one.
