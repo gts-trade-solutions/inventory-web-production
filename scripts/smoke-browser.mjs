@@ -417,6 +417,62 @@ if ((await selfTest.count()) === 0) {
   await visit('/admin/audit', 'admin · audit log')
   await visit('/admin/reason-codes', 'admin · reason codes')
 
+  // Master data, driven both ways: something that should work, and something
+  // that should be refused. The refusals are the point of the screen, and a
+  // refusal that never reaches the page is the same as no guard at all.
+  current = 'admin · master data'
+  await visit('/admin/master-data', 'admin · master data')
+
+  {
+    const name = `Smoke ${Date.now()}`
+    await page.fill('#category-name', name)
+    await page.getByRole('button', { name: /^add$/i }).nth(1).click()
+
+    try {
+      await page
+        .getByText(new RegExp(`${name} added`, 'i'))
+        .first()
+        .waitFor({ timeout: 30_000 })
+      console.log('  ✓     admin · added a category')
+    } catch {
+      failures.push({
+        page: '/admin/master-data',
+        kind: 'broken',
+        text: 'could not add a category',
+      })
+    }
+  }
+
+  {
+    // The only active site cannot be deactivated: with none active there is
+    // nowhere to receive stock into.
+    const deactivate = page.getByRole('button', { name: /deactivate/i }).first()
+
+    if ((await deactivate.count()) === 0) {
+      failures.push({
+        page: '/admin/master-data',
+        kind: 'missing',
+        text: 'no site controls on the master data screen',
+      })
+    } else {
+      await deactivate.click()
+
+      try {
+        await page
+          .getByText(/only active site|still holds stock/i)
+          .first()
+          .waitFor({ timeout: 30_000 })
+        console.log('  ✓     admin · refused to deactivate a site that is still in use')
+      } catch {
+        failures.push({
+          page: '/admin/master-data',
+          kind: 'guard',
+          text: 'deactivating a site in use was not refused on screen',
+        })
+      }
+    }
+  }
+
   // Import, driven all the way through: check, then commit. The dry run must
   // change nothing, which is the property the whole screen exists for.
   current = 'admin · import'

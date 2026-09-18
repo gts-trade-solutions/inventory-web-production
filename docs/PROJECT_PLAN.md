@@ -336,6 +336,9 @@ to end with nothing plugged in, on the production code path.
 - **7.2** Device registry administration: register network devices, assign, revoke, last seen, firmware
 - **7.3** Label template editor: ZPL editing, live preview, per-kind and per-printer defaults
 - **7.4** Categories, units, sites, reason codes, number sequences administration
+  - Units are deliberately not a table. `Item.unit` is a display label — quantities are integers and no
+    arithmetic depends on it — so a `units` model would add a migration, a foreign key and a sync contract
+    change in exchange for validating a caption. It stays a field on the item.
 - **7.5** Settings: expiry policy, FEFO policy, variance thresholds, adjustment limits, reorder and print defaults
 - **7.6** Audit log viewer with filters
 - **7.7** Role enforcement audit: every Server Action and route handler checked server-side

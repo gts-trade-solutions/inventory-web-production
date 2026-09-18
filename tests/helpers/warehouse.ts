@@ -60,7 +60,12 @@ export async function seedWarehouse(): Promise<Warehouse> {
 
   const site = await prisma.site.upsert({
     where: { code: 'TEST' },
-    update: {},
+    // Reset, for the same reason as the user below. A site-admin test that
+    // deactivates this site would otherwise leave it deactivated for every run
+    // afterwards — and the failure is confusing rather than obvious, because
+    // the guards that refuse to deactivate the last active site simply stop
+    // firing once the site they were guarding is already inactive.
+    update: { active: true, deletedAt: null },
     create: { id: randomUUID(), code: 'TEST', name: 'Test warehouse' },
   })
 

@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   Cpu,
   FileWarning,
+  FolderTree,
   LayoutDashboard,
   MapPin,
   Package,
@@ -89,6 +90,12 @@ export const NAV_SECTIONS: NavSection[] = [
         href: '/admin/users',
         label: 'People',
         icon: Users,
+        minimumRole: UserRole.ADMIN,
+      },
+      {
+        href: '/admin/master-data',
+        label: 'Master data',
+        icon: FolderTree,
         minimumRole: UserRole.ADMIN,
       },
       {

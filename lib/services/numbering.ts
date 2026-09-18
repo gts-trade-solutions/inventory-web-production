@@ -104,8 +104,14 @@ export async function allocateDocNo(db: Db, key: DocKey, now: Date = new Date())
 
   // Safe because we hold the exclusive lock on this row for the rest of the
   // transaction: nobody else can change it between the UPDATE and this read.
-  const [row] = await db.$queryRaw<Array<{ nextValue: number; padding: number }>>`
-    SELECT nextValue, padding FROM number_sequences
+  //
+  // The PREFIX is read from the row too, not taken from DOC_PREFIXES. The
+  // constant is only the default used when the row is first created; an admin
+  // who changes a prefix (lib/services/sequences.ts) expects the next document
+  // to carry it, and reading the constant here made that screen a control that
+  // silently did nothing.
+  const [row] = await db.$queryRaw<Array<{ prefix: string; nextValue: number; padding: number }>>`
+    SELECT prefix, nextValue, padding FROM number_sequences
      WHERE \`key\` = ${key} AND period = ${period}
   `
   if (!row) {
@@ -113,7 +119,7 @@ export async function allocateDocNo(db: Db, key: DocKey, now: Date = new Date())
   }
 
   // nextValue now points at the NEXT document, so the one we own is one less.
-  return formatDocNo(prefix, period, row.nextValue - 1, row.padding)
+  return formatDocNo(row.prefix, period, row.nextValue - 1, row.padding)
 }
 
 export function formatDocNo(prefix: string, period: string, sequence: number, padding = 6): string {
