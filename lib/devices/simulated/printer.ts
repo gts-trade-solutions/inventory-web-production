@@ -1,10 +1,13 @@
 import { labelCount, validateZpl } from '@/lib/labels/zpl'
 import {
   PrintOutcome,
+  SelfTestOutcome,
+  summarise,
   type PrinterConnector,
   type PrinterStatus,
   type PrintResult,
   type SelfTestReport,
+  type SelfTestStep,
 } from '../printer'
 
 /**
@@ -125,29 +128,28 @@ export class SimulatedPrinter implements PrinterConnector {
       ['^XA^CI28', '^CF0,36^FO40,40^FDInventory test label^FS', '^XZ'].join('\n'),
     )
 
-    return {
-      device: this.label,
-      ok: result.outcome !== PrintOutcome.FAILED,
-      steps: [
-        {
-          name: 'Open socket',
-          ok: true,
-          detail: 'Simulated printer — no network involved.',
-          ms: 0,
-        },
-        {
-          name: 'Query status (~HS)',
-          ok: this.state.online,
-          detail: this.state.paperOut ? 'Reports out of labels.' : 'Reports no problems.',
-          ms: 0,
-        },
-        {
-          name: 'Print a test label',
-          ok: result.outcome !== PrintOutcome.FAILED,
-          detail: result.error ?? result.message,
-          ms: result.ms,
-        },
-      ],
-    }
+    const steps: SelfTestStep[] = [
+      {
+        name: 'Open socket',
+        outcome: SelfTestOutcome.PASSED,
+        detail: 'Simulated printer — no network involved.',
+        ms: 0,
+      },
+      {
+        name: 'Query status (~HS)',
+        outcome: this.state.online ? SelfTestOutcome.PASSED : SelfTestOutcome.FAILED,
+        detail: this.state.paperOut ? 'Reports out of labels.' : 'Reports no problems.',
+        ms: 0,
+      },
+      {
+        name: 'Print a test label',
+        outcome:
+          result.outcome === PrintOutcome.FAILED ? SelfTestOutcome.FAILED : SelfTestOutcome.PASSED,
+        detail: result.error ?? result.message,
+        ms: result.ms,
+      },
+    ]
+
+    return { device: this.label, outcome: summarise(steps), steps }
   }
 }

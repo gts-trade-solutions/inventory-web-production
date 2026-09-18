@@ -147,7 +147,7 @@ describe('self-testing a printer', () => {
 
     const report = await runSelfTest(prisma, device.id, LIVE)
 
-    expect(report.ok).toBe(true)
+    expect(report.outcome).toBe('PASSED')
     expect(report.steps.map((s) => s.name)).toEqual([
       'Open socket',
       'Query status (~HS)',
@@ -166,7 +166,7 @@ describe('self-testing a printer', () => {
 
     const report = await runSelfTest(prisma, device.id, LIVE)
 
-    expect(report.ok).toBe(false)
+    expect(report.outcome).toBe('FAILED')
     expect(report.steps).toHaveLength(1)
     expect(report.steps[0]?.detail.length).toBeGreaterThan(20)
   })
@@ -207,7 +207,7 @@ describe('self-testing a printer', () => {
 
     const report = await runSelfTest(prisma, device.id, LIVE)
 
-    expect(report.ok).toBe(true)
+    expect(report.outcome).toBe('PASSED')
     expect(report.steps[0]?.detail).toMatch(/simulated/i)
   })
 })
@@ -243,8 +243,12 @@ describe('self-testing an RFID reader', () => {
 
     const report = await runSelfTest(prisma, device.id, LIVE)
 
-    expect(report.ok).toBe(true)
-    expect(report.steps[2]?.detail).toMatch(/simulation/)
+    // INCONCLUSIVE, not PASSED: nothing is loaded, so the sweep saw nothing,
+    // and a sweep that saw nothing has not demonstrated that tags can be read.
+    // Saying "passed" here is how a reader is signed off with its antenna
+    // unplugged.
+    expect(report.outcome).toBe('INCONCLUSIVE')
+    expect(report.steps[2]?.detail).toMatch(/no tags/)
   })
 })
 

@@ -3,12 +3,15 @@ import net from 'node:net'
 import { labelCount, testLabel, validateZpl } from '@/lib/labels/zpl'
 import {
   PrintOutcome,
+  SelfTestOutcome,
+  summarise,
   type PrinterConnector,
   type PrinterStatus,
   type PrintResult,
   type SelfTestReport,
   type SelfTestStep,
 } from '../printer'
+import { step, unproven, type Unproven } from '../self-test'
 
 /**
  * A networked Zebra printer, spoken to directly over TCP 9100.
@@ -124,9 +127,9 @@ export class TcpPrinter implements PrinterConnector {
     })
     steps.push(socketStep)
 
-    if (!socketStep.ok) {
+    if (socketStep.outcome === SelfTestOutcome.FAILED) {
       // Nothing after this can mean anything.
-      return { device: this.label, ok: false, steps }
+      return { device: this.label, outcome: SelfTestOutcome.FAILED, steps }
     }
 
     steps.push(
@@ -145,7 +148,7 @@ export class TcpPrinter implements PrinterConnector {
       }),
     )
 
-    return { device: this.label, ok: steps.every((s) => s.ok), steps }
+    return { device: this.label, outcome: summarise(steps), steps }
   }
 
   // -------------------------------------------------------------------------
@@ -289,8 +292,13 @@ export function parseHostStatus(reply: string): PrinterStatus {
   }
 }
 
-/** The status in a sentence an operator can act on. */
-export function describeStatus(status: PrinterStatus): string {
+/**
+ * The status in a sentence an operator can act on.
+ *
+ * Returns `unproven(...)` for the case where the printer answered but told us
+ * nothing about paper or the head — see below.
+ */
+export function describeStatus(status: PrinterStatus): string | Unproven {
   if (!status.online) return 'The printer did not answer.'
 
   const problems: string[] = []
@@ -300,24 +308,15 @@ export function describeStatus(status: PrinterStatus): string {
 
   if (problems.length > 0) return `The printer answered, and reports it is ${problems.join(', ')}.`
 
-  // Only claim readiness for the fields it actually reported.
+  // Only claim readiness for the fields it actually reported. A model that
+  // answers ~HS without them has told us the socket works and nothing else, so
+  // the step is unproven rather than passed — otherwise the bring-up record
+  // says "status verified" about a printer whose status we never saw.
   const known = [status.paperOut, status.headOpen, status.paused].some((v) => v !== undefined)
+
   return known
     ? 'The printer answered and reports no problems.'
-    : 'The printer answered, but did not report paper or head status.'
-}
-
-async function step(name: string, run: () => Promise<string>): Promise<SelfTestStep> {
-  const started = Date.now()
-  try {
-    const detail = await run()
-    return { name, ok: true, detail, ms: Date.now() - started }
-  } catch (error) {
-    return {
-      name,
-      ok: false,
-      detail: error instanceof Error ? error.message : String(error),
-      ms: Date.now() - started,
-    }
-  }
+    : unproven(
+        'The printer answered, but did not report paper or head status. Check the model against the Link-OS ~HS format before relying on status here.',
+      )
 }

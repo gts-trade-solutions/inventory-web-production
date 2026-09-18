@@ -144,7 +144,7 @@ describe('selfTest', () => {
 
     const report = await reader.selfTest()
 
-    expect(report.ok).toBe(true)
+    expect(report.outcome).toBe('PASSED')
     expect(report.steps[2]?.detail).toMatch(/of 20 tags/)
     expect(report.steps[2]?.detail).toMatch(/simulation/)
   })

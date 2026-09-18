@@ -15,7 +15,8 @@ import {
   type LlrpMessage,
   type LlrpTagRead,
 } from '../llrp/protocol'
-import type { SelfTestReport, SelfTestStep } from '../printer'
+import { SelfTestOutcome, summarise, type SelfTestReport, type SelfTestStep } from '../printer'
+import { step, unproven } from '../self-test'
 
 /**
  * A fixed Zebra RFID reader (FX7500 / FX9600) over LLRP.
@@ -206,7 +207,9 @@ export class LlrpReader extends EventEmitter {
     })
     steps.push(connectStep)
 
-    if (!connectStep.ok) return { device: this.label, ok: false, steps }
+    if (connectStep.outcome === SelfTestOutcome.FAILED) {
+      return { device: this.label, outcome: SelfTestOutcome.FAILED, steps }
+    }
 
     steps.push(
       await step('Read capabilities', async () => {
@@ -225,15 +228,23 @@ export class LlrpReader extends EventEmitter {
         async () => {
           const reads = await this.inventoryFor(this.selfTestInventoryMs)
           const unique = new Set(reads.map((read) => read.epc))
+
+          // Zero tags is not a pass. The sweep ran, the reader answered, and
+          // the one thing this step exists to demonstrate — that tags can be
+          // read — was not demonstrated. Reporting that as a pass is how a
+          // bring-up checklist gets ticked with an antenna cable hanging off.
+          // It is not a failure either: an empty aisle is not a fault.
           return unique.size === 0
-            ? 'Ran, but saw no tags. Check antennas, power and that there is tagged stock in range.'
+            ? unproven(
+                'Ran, but saw no tags. Put known tagged stock in range and run it again. If it is already in range, check the antenna cables, transmit power and read zone.',
+              )
             : `Saw ${unique.size} distinct tag${unique.size === 1 ? '' : 's'} in ${reads.length} reads.`
         },
       ),
     )
 
     this.disconnect()
-    return { device: this.label, ok: steps.every((s) => s.ok), steps }
+    return { device: this.label, outcome: summarise(steps), steps }
   }
 
   // -------------------------------------------------------------------------
@@ -339,19 +350,5 @@ export class LlrpReader extends EventEmitter {
     for (const { reject } of waiting) reject(new LlrpError(reason))
 
     this.emit('disconnected', reason)
-  }
-}
-
-async function step(name: string, run: () => Promise<string>): Promise<SelfTestStep> {
-  const started = Date.now()
-  try {
-    return { name, ok: true, detail: await run(), ms: Date.now() - started }
-  } catch (error) {
-    return {
-      name,
-      ok: false,
-      detail: error instanceof Error ? error.message : String(error),
-      ms: Date.now() - started,
-    }
   }
 }

@@ -30,7 +30,8 @@
     "sweep": "tsx --conditions=react-server scripts/nightly-sweep.ts",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
-    "restore:verify": "node scripts/restore-verify.mjs"
+    "restore:verify": "node scripts/restore-verify.mjs",
+    "bringup": "tsx --conditions=react-server scripts/bring-up.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

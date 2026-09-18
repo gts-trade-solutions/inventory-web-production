@@ -210,7 +210,14 @@ describe('parseHostStatus', () => {
 
     expect(status.online).toBe(true)
     expect(status.paperOut).toBeUndefined()
-    expect(describeStatus(status)).toMatch(/did not report/)
+
+    // Unproven rather than a plain sentence. The printer answered and told us
+    // nothing about paper or the head, so the self-test step that reports this
+    // must not read as a pass.
+    expect(describeStatus(status)).toMatchObject({
+      unproven: true,
+      detail: expect.stringMatching(/did not report/),
+    })
   })
 
   it('treats an empty reply as no answer', () => {
@@ -225,7 +232,7 @@ describe('selfTest', () => {
 
     const report = await connect(printer.port).selfTest()
 
-    expect(report.ok).toBe(true)
+    expect(report.outcome).toBe('PASSED')
     expect(report.steps.map((s) => s.name)).toEqual([
       'Open socket',
       'Query status (~HS)',
@@ -242,9 +249,9 @@ describe('selfTest', () => {
 
     const report = await connect(port).selfTest()
 
-    expect(report.ok).toBe(false)
+    expect(report.outcome).toBe('FAILED')
     expect(report.steps).toHaveLength(1)
-    expect(report.steps[0]?.ok).toBe(false)
+    expect(report.steps[0]?.outcome).toBe('FAILED')
   })
 
   it('carries on when only the status query fails', async () => {
@@ -255,8 +262,8 @@ describe('selfTest', () => {
     const report = await connect(printer.port).selfTest()
 
     expect(report.steps).toHaveLength(3)
-    expect(report.steps[1]?.ok).toBe(false)
-    expect(report.steps[2]?.ok).toBe(true)
+    expect(report.steps[1]?.outcome).toBe('FAILED')
+    expect(report.steps[2]?.outcome).toBe('PASSED')
   })
 
   it('prints a test label that is valid on its own', async () => {

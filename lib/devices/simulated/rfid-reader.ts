@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import type { SelfTestReport } from '../printer'
+import { SelfTestOutcome, summarise, type SelfTestReport, type SelfTestStep } from '../printer'
 import type { LlrpTagRead } from '../llrp/protocol'
 
 /**
@@ -140,25 +140,35 @@ export class SimulatedRfidReader extends EventEmitter {
     const reads = this.sweep()
     const unique = new Set(reads.map((read) => read.epc))
 
-    return {
-      device: this.label,
-      ok: true,
-      steps: [
-        { name: 'Connect', ok: true, detail: 'Simulated reader — no network involved.', ms: 0 },
-        {
-          name: 'Read capabilities',
-          ok: true,
-          detail: 'Simulated FX9600, 4 antennas.',
-          ms: 0,
-        },
-        {
-          name: 'Inventory sweep',
-          ok: true,
-          detail: `Saw ${unique.size} of ${this.source.epcs.length} tags in ${reads.length} reads (simulation).`,
-          ms: 0,
-        },
-      ],
-    }
+    const steps: SelfTestStep[] = [
+      {
+        name: 'Connect',
+        outcome: SelfTestOutcome.PASSED,
+        detail: 'Simulated reader — no network involved.',
+        ms: 0,
+      },
+      {
+        name: 'Read capabilities',
+        outcome: SelfTestOutcome.PASSED,
+        detail: 'Simulated FX9600, 4 antennas.',
+        ms: 0,
+      },
+      {
+        // Same rule as the real reader: a sweep that saw nothing has proved
+        // nothing, even here. If the simulator ever reported a confident pass
+        // on an empty sweep, the thing people rehearse on would disagree with
+        // the thing they use on the day.
+        name: 'Inventory sweep',
+        outcome: unique.size === 0 ? SelfTestOutcome.INCONCLUSIVE : SelfTestOutcome.PASSED,
+        detail:
+          unique.size === 0
+            ? 'Ran, but saw no tags — this location has no simulated tagged stock.'
+            : `Saw ${unique.size} of ${this.source.epcs.length} tags in ${reads.length} reads (simulation).`,
+        ms: 0,
+      },
+    ]
+
+    return { device: this.label, outcome: summarise(steps), steps }
   }
 }
 

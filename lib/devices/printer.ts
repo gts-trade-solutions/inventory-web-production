@@ -51,9 +51,29 @@ export interface PrinterStatus {
   raw?: string
 }
 
+/**
+ * How a self-test step turned out.
+ *
+ * Three states, not two. A step that ran without error but did not exercise the
+ * thing it exists to check — an inventory sweep that saw no tags at all — has
+ * not passed, and saying it did is how somebody ticks "reader verified" on the
+ * bring-up checklist with an antenna cable hanging loose. It has also not
+ * failed: an empty aisle is not a fault, and a reader that showed red whenever
+ * nothing was in range would be ignored within a week.
+ *
+ * INCONCLUSIVE is the honest third answer, and it is the one bring-up needs.
+ */
+export const SelfTestOutcome = {
+  PASSED: 'PASSED',
+  FAILED: 'FAILED',
+  /** Ran, but proved nothing. Says what to put in range and try again. */
+  INCONCLUSIVE: 'INCONCLUSIVE',
+} as const
+export type SelfTestOutcome = (typeof SelfTestOutcome)[keyof typeof SelfTestOutcome]
+
 export interface SelfTestStep {
   name: string
-  ok: boolean
+  outcome: SelfTestOutcome
   /** What happened, not whether it passed. This is the bring-up record. */
   detail: string
   ms: number
@@ -61,8 +81,26 @@ export interface SelfTestStep {
 
 export interface SelfTestReport {
   device: string
-  ok: boolean
+  outcome: SelfTestOutcome
   steps: SelfTestStep[]
+}
+
+/**
+ * The report's outcome, from its steps: any failure fails, and anything
+ * unproven leaves the whole test unproven.
+ */
+export function summarise(steps: readonly SelfTestStep[]): SelfTestOutcome {
+  // No steps demonstrates nothing. Defaulting that to PASSED would make a
+  // connector that ran no checks at all look verified, which is the one
+  // direction this must never fail in.
+  if (steps.length === 0) return SelfTestOutcome.INCONCLUSIVE
+
+  if (steps.some((step) => step.outcome === SelfTestOutcome.FAILED)) return SelfTestOutcome.FAILED
+  if (steps.some((step) => step.outcome === SelfTestOutcome.INCONCLUSIVE)) {
+    return SelfTestOutcome.INCONCLUSIVE
+  }
+
+  return SelfTestOutcome.PASSED
 }
 
 export interface PrinterConnector {

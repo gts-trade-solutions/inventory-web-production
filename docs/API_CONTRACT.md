@@ -454,6 +454,35 @@ when their remaining serials run low, so being offline never blocks label printi
 The shared device registry: scanners, readers, printers and mobile computers. Admins register network devices;
 scanners and mobile computers self-register on first connection.
 
+### `POST /devices/{id}/self-test`
+
+Runs the device's bring-up sequence and returns the record. Admin only. The mode in the caller's token decides
+which connector runs, so a DEMO token can never open a socket to warehouse hardware.
+
+```json
+{
+  "device": "Bay 1 printer",
+  "outcome": "PASSED",
+  "steps": [
+    { "name": "Open socket", "outcome": "PASSED", "detail": "Connected to 10.0.4.21 on port 9100.", "ms": 4 },
+    { "name": "Query status (~HS)", "outcome": "PASSED", "detail": "The printer answered and reports no problems.", "ms": 7 }
+  ]
+}
+```
+
+**`outcome` is one of `PASSED`, `FAILED`, `INCONCLUSIVE` — three states, not a boolean.** `INCONCLUSIVE` means
+the step ran without error but did not demonstrate what it exists to demonstrate: an inventory sweep that saw no
+tags, a printer that answers `~HS` without reporting paper or head status, or a scanner, which the server cannot
+test at all because a scanner connects to the browser. A client must not render it as a pass — that is how a
+device gets signed off with its antenna unplugged — and must not render it as a failure either, because nothing
+is necessarily wrong. One unproven step leaves the whole report unproven.
+
+`detail` always says what happened rather than whether it passed, and is the text a client should show. It is
+written for somebody standing next to the device.
+
+> **Changed.** This previously returned `ok: true|false` on both the report and each step. Clients reading `ok`
+> will see `undefined` and must move to `outcome`. The reason for the change is in DEVICE_INTEGRATION §11.3.
+
 ### `POST /devices/heartbeat`
 
 `{ "appVersion": "1.2.0", "pendingCount": 4, "batteryPercent": 62 }` — updates `last_seen_at`, feeds the

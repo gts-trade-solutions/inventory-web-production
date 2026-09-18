@@ -275,20 +275,41 @@ describe('selfTest', () => {
       'Read capabilities',
       'Inventory for 0 seconds',
     ])
-    expect(report.ok).toBe(true)
+    expect(report.outcome).toBe('PASSED')
     // Distinct tags, not raw reads: a reader sees the same tag many times per
     // sweep, and "3 reads" would flatter a single tag into three.
     expect(report.steps[2]?.detail).toMatch(/2 distinct tags/)
   })
 
-  it('says plainly when nothing was seen', async () => {
+  it('does not call a sweep that saw nothing a pass', async () => {
+    // The whole point of the third outcome. The reader connected, answered
+    // every command and ran the sweep — nothing failed. But the one thing this
+    // step exists to demonstrate, that tags can be read, was not demonstrated,
+    // and a green tick beside "saw no tags" is how a reader gets signed off on
+    // the bring-up checklist with its antenna cable hanging loose.
+    reader = await startFakeLlrpReader()
+    client = connect(reader.port)
+
+    const report = await client.selfTest()
+
+    expect(report.steps[0]?.outcome).toBe('PASSED')
+    expect(report.steps[1]?.outcome).toBe('PASSED')
+    expect(report.steps[2]?.outcome).toBe('INCONCLUSIVE')
+
+    // And one unproven step leaves the whole report unproven — not failed,
+    // because an empty aisle is not a fault.
+    expect(report.outcome).toBe('INCONCLUSIVE')
+  })
+
+  it('says plainly what to do about it', async () => {
     reader = await startFakeLlrpReader()
     client = connect(reader.port)
 
     const report = await client.selfTest()
 
     expect(report.steps[2]?.detail).toMatch(/no tags/i)
-    expect(report.steps[2]?.detail).toMatch(/antennas|power/i)
+    // Actionable: what to put in range, then what to check if it already is.
+    expect(report.steps[2]?.detail).toMatch(/antenna|power|read zone/i)
   })
 
   it('stops after a failed connection', async () => {
@@ -296,7 +317,7 @@ describe('selfTest', () => {
 
     const report = await client.selfTest()
 
-    expect(report.ok).toBe(false)
+    expect(report.outcome).toBe('FAILED')
     expect(report.steps).toHaveLength(1)
   })
 })

@@ -348,6 +348,62 @@ Scanner   : claim device -> await one scan -> report data, symbology, latency
 It reports what actually happened at each step, not a boolean. On hardware day, `selfTest()` is the first thing
 run against each device, and its output is the bring-up record.
 
+**Three outcomes per step, not two.** `PASSED`, `FAILED`, and `INCONCLUSIVE` — ran, but proved nothing.
+
+The third one is the reason this section exists. An inventory sweep that saw no tags has not failed: the reader
+answered every command and the sweep completed, and an empty aisle is not a fault. It has also not passed — the
+one thing the step exists to demonstrate, that tags can be read, was not demonstrated. Collapsing that into a
+green tick is precisely how a reader gets signed off on the checklist below with an antenna cable hanging loose,
+and a red cross on every reader that happens to be idle is how the self-test gets ignored within a week.
+
+The same applies to a printer that answers `~HS` without reporting paper or head status, and to a scanner, which
+the server cannot test at all because a scanner connects to the browser. Both report `INCONCLUSIVE` and say what
+to do about it. One unproven step leaves the whole report unproven.
+
+### 11.4 Rehearsing the bring-up
+
+```sh
+npm run bringup
+```
+
+Runs the **real** connectors — the same `TcpPrinter` and `LlrpReader` that will talk to an FX9600 — against the
+protocol-level simulators, and prints the bring-up record in the format hardware day will produce it. It
+rehearses the failures too: a printer that accepts the connection and then says nothing, a host that is not
+there, a reader that sees nothing.
+
+The point is not to test the connectors; the test suite does that. The point is that somebody standing in a
+warehouse with a box of Zebras has to decide whether what came back is normal, and that is much easier against a
+known-good record produced by the same code than from scratch at 9am.
+
+What it prints, abridged:
+
+```
+Bay 1 printer  — a healthy printer
+[  ok  ] Open socket                        Connected to 10.0.4.21 on port 9100.
+[  ok  ] Query status (~HS)                 The printer answered and reports no problems.
+[  ok  ] Print a test label                 179 bytes accepted. Check that a label came out —
+                                            the socket cannot tell us.
+         => PASSED
+
+Bay 3 printer  — connects, then never answers ~HS
+[  ok  ] Open socket                        Connected to 10.0.4.23 on port 9100.
+[ FAIL ] Query status (~HS)                 No reply within 3000ms.
+[  ok  ] Print a test label                 179 bytes accepted...
+         => FAILED
+
+Aisle 4 reader  — connected, but no tags seen
+[  ok  ] Connect                            Connected to 10.0.4.40 on port 5084.
+[  ok  ] Read capabilities                  Answered with 8 bytes of capabilities.
+[  ??  ] Inventory for 5 seconds            Ran, but saw no tags. Put known tagged stock in
+                                            range and run it again. If it is already in range,
+                                            check the antenna cables, transmit power and read
+                                            zone.
+         => INCONCLUSIVE
+```
+
+Note Bay 3: the status query failed and the test label was still accepted. That is a printer that ignores `~HS`,
+not a printer that cannot print, and the record says so rather than failing the whole device.
+
 ---
 
 ## 12. Hardware bring-up checklist
@@ -356,6 +412,7 @@ When devices arrive, this is the sequence. It should be a day, not a sprint.
 
 **Before the hardware arrives**
 
+- [ ] Run `npm run bringup` and read the output, so the real records have something to be compared against
 - [ ] Confirm the models being supplied and their firmware versions (Q6)
 - [ ] Confirm network topology: can the server reach printers on 9100 and readers on 5084 / MQTT? (Q7)
 - [ ] Label stock ordered and confirmed against template dimensions, including RFID stock if encoding
@@ -389,6 +446,8 @@ When devices arrive, this is the sequence. It should be a day, not a sprint.
 **Sign-off**
 
 - [ ] Every `selfTest()` output recorded against its device
+- [ ] **No step left `INCONCLUSIVE`.** An unproven step is not a pass: put tagged stock in range, or check the
+      model's `~HS` format, and run it again until every step has actually demonstrated something
 - [ ] One full workflow per device type, executed on real hardware in Live mode
 - [ ] Firmware versions recorded in the device registry
 - [ ] Scanner and printer setup sheets updated with the settings that actually worked

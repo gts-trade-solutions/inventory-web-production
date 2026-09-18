@@ -618,6 +618,38 @@ if ((await selfTest.count()) === 0) {
     console.log('  ✓     devices · registered a device as admin')
   }
 
+  current = 'devices · self-test'
+  // The self-test record only exists after somebody presses the button, so
+  // nothing before this point has rendered a single step. A printer simulator
+  // is registered above, so this exercises the real action and the real
+  // reporting path.
+  // Not anchored: the accessible name carries a screen-reader suffix naming the
+  // device, so /^self-test$/ finds nothing.
+  const selfTest = page.getByRole('button', { name: /self-test/i }).first()
+
+  if ((await selfTest.count()) === 0) {
+    failures.push({ page: '/devices', kind: 'missing', text: 'no self-test control on a device' })
+  } else {
+    await selfTest.click()
+
+    // Waits for the DETAIL, not the step name. A step name can match text that
+    // was already on the page, which would let this walk past a report that
+    // never rendered — and the detail is the whole point: every step says what
+    // happened, not whether it passed.
+    const detail = page.getByText(/no network involved/i).first()
+
+    try {
+      await detail.waitFor({ timeout: 60_000 })
+      console.log('  ✓     devices · self-test rendered a record, not a verdict')
+    } catch {
+      failures.push({
+        page: '/devices',
+        kind: 'empty',
+        text: 'a self-test did not render what happened at each step',
+      })
+    }
+  }
+
   const reset = page.getByRole('button', { name: /^reset demo data$/i }).first()
 
   if ((await reset.count()) === 0) {

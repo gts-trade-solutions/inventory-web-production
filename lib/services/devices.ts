@@ -2,7 +2,7 @@ import 'server-only'
 import { DeviceConnection, DeviceKind } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import { ApiError, ErrorCode } from '@/lib/api/errors'
-import type { SelfTestReport } from '@/lib/devices/printer'
+import { SelfTestOutcome, type SelfTestReport } from '@/lib/devices/printer'
 import { SimulatedPrinter } from '@/lib/devices/simulated/printer'
 import { SimulatedRfidReader } from '@/lib/devices/simulated/rfid-reader'
 import { TcpPrinter } from '@/lib/devices/server/tcp-printer'
@@ -144,9 +144,12 @@ export async function runSelfTest(
   // a socket to warehouse hardware (DEMO_MODE §7.3).
   const report = await selfTestFor(device, mode)
 
-  // A self-test IS contact with the device, so a passing one updates lastSeenAt
-  // and a failing one deliberately does not.
-  if (report.ok) {
+  // A self-test IS contact with the device, so anything short of a failure
+  // updates lastSeenAt. An inventory sweep that saw no tags still reached the
+  // reader, and the reader was demonstrably there.
+  const reached = report.outcome !== SelfTestOutcome.FAILED
+
+  if (reached) {
     await db.device.update({ where: { id: deviceId }, data: { lastSeenAt: new Date() } })
   }
 
@@ -154,13 +157,25 @@ export async function runSelfTest(
     mode,
     siteId: null,
     device: device.label,
-    detail: report.ok
-      ? 'self-test passed'
-      : `self-test failed at ${report.steps.find((step) => !step.ok)?.name ?? 'an early step'}`,
-    ok: report.ok,
+    detail: describeOutcome(report),
+    ok: reached,
   })
 
   return report
+}
+
+/** The event-stream line, which names the step so the console is worth reading. */
+function describeOutcome(report: SelfTestReport): string {
+  const blocking = report.steps.find((step) => step.outcome === report.outcome)?.name
+
+  switch (report.outcome) {
+    case SelfTestOutcome.FAILED:
+      return `self-test failed at ${blocking ?? 'an early step'}`
+    case SelfTestOutcome.INCONCLUSIVE:
+      return `self-test proved nothing at ${blocking ?? 'a step'}`
+    default:
+      return 'self-test passed'
+  }
 }
 
 async function selfTestFor(device: DeviceRow, mode: AppMode): Promise<SelfTestReport> {
@@ -177,11 +192,13 @@ async function selfTestFor(device: DeviceRow, mode: AppMode): Promise<SelfTestRe
       default:
         return {
           device: device.label,
-          ok: true,
+          // Not a pass. Nothing was exercised: this is a stand-in reporting
+          // that it is a stand-in.
+          outcome: SelfTestOutcome.INCONCLUSIVE,
           steps: [
             {
               name: 'Connect',
-              ok: true,
+              outcome: SelfTestOutcome.INCONCLUSIVE,
               detail:
                 'Simulated — this device is a stand-in. A scanner proves itself by scanning; open Scan and use the simulator there.',
               ms: 0,
@@ -200,14 +217,16 @@ async function selfTestFor(device: DeviceRow, mode: AppMode): Promise<SelfTestRe
       return new LlrpReader({ host, port, label: device.label }).selfTest()
     default:
       // Scanners reach the browser, not the server, so the server cannot test
-      // one. Saying so beats a green tick that means nothing.
+      // one. Unproven rather than failed: nothing is wrong with the scanner,
+      // we simply are not in a position to find out from here. Reporting it as
+      // a failure would have people looking for a fault that does not exist.
       return {
         device: device.label,
-        ok: false,
+        outcome: SelfTestOutcome.INCONCLUSIVE,
         steps: [
           {
             name: 'Connect',
-            ok: false,
+            outcome: SelfTestOutcome.INCONCLUSIVE,
             detail:
               'A scanner connects to the browser, not to the server, so it cannot be tested from here. Open Scan and trigger a read.',
             ms: 0,

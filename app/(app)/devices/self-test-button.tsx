@@ -2,8 +2,9 @@
 
 import { useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { AlertCircle, CheckCircle2, Loader2, Stethoscope, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, HelpCircle, Loader2, Stethoscope, XCircle } from 'lucide-react'
 import { runSelfTestAction, type SelfTestState } from './actions'
+import type { SelfTestOutcome } from '@/lib/devices/printer'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 
@@ -44,11 +45,7 @@ export function SelfTestButton({
         <div className="mt-3 space-y-2 rounded-lg border bg-muted/30 p-3">
           {state.report.steps.map((step) => (
             <div key={step.name} className="flex gap-2 text-sm">
-              {step.ok ? (
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-ok" />
-              ) : (
-                <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
-              )}
+              <StepIcon outcome={step.outcome} />
               <div className="min-w-0">
                 <div className="flex items-baseline gap-2">
                   <span className="font-medium">{step.name}</span>
@@ -63,6 +60,28 @@ export function SelfTestButton({
       )}
     </div>
   )
+}
+
+/**
+ * Three states, not two.
+ *
+ * A step that ran but proved nothing — a sweep that saw no tags — gets its own
+ * mark rather than a green tick, because a green tick next to "saw no tags" is
+ * how a reader gets signed off with its antenna unplugged.
+ */
+function StepIcon({ outcome }: { outcome: SelfTestOutcome }) {
+  if (outcome === 'FAILED') return <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+
+  if (outcome === 'INCONCLUSIVE') {
+    return (
+      <HelpCircle
+        className="mt-0.5 size-4 shrink-0 text-warn"
+        aria-label="Ran, but proved nothing"
+      />
+    )
+  }
+
+  return <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-ok" />
 }
 
 function SubmitButton({ disabled, label }: { disabled?: boolean; label: string }) {
