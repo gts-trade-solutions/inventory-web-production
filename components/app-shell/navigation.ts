@@ -85,7 +85,7 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: FileWarning,
         minimumRole: UserRole.SUPERVISOR,
       },
-      { href: '/reports', label: 'Reports', icon: BarChart3, comingSoon: true },
+      { href: '/reports', label: 'Reports', icon: BarChart3 },
       {
         href: '/admin/users',
         label: 'People',

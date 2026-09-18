@@ -342,7 +342,16 @@ to end with nothing plugged in, on the production code path.
 - **7.5** Settings: expiry policy, FEFO policy, variance thresholds, adjustment limits, reorder and print defaults
 - **7.6** Audit log viewer with filters
 - **7.7** Role enforcement audit: every Server Action and route handler checked server-side
-- **7.8** API client management for future integrations
+- **7.8** API client management for future integrations — **deferred, deliberately**
+  - `api_clients` is a table nothing reads. Nothing on `/api/v1` authenticates as a client, so a management
+    screen over it would issue credentials that grant exactly nothing — and an admin who creates a key for an
+    ERP would reasonably believe they had granted access. A control that silently does nothing is worse than
+    an absent one.
+  - Building the authentication path instead would mean designing a scope model with no consumer to check it
+    against. ARCHITECTURE Q10 already answers this: the ERP integration is not in v1, and the table exists so
+    that adding it later is additive rather than a migration.
+  - **What unblocks it:** a named integration and what it needs to do. Then the scopes are derived from a real
+    consumer rather than guessed, and the screen and the auth path land together.
 
 _Exit:_ an admin can configure and run the system without a developer.
 

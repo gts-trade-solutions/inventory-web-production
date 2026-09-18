@@ -106,6 +106,64 @@ await visit('/movements')
 await visit('/scan')
 await visit('/counts')
 
+// Reports. Each one is visited with filters applied as well as bare, because
+// the filters are read from the URL and a page that throws on an unexpected
+// query string would look fine on the plain visit.
+await visit('/reports')
+await visit('/reports/stock')
+await visit('/reports/stock?grain=BATCH')
+await visit('/reports/movements')
+await visit('/reports/counts')
+await visit('/reports/ageing')
+await visit('/reports/reorder')
+// A range typed the wrong way round is swapped rather than rejected, and a
+// nonsense date falls back to the default. Both would otherwise be a 500 on a
+// URL somebody pasted.
+await visit('/reports/movements?from=2026-09-18&to=2026-01-01', 'reports · reversed date range')
+await visit('/reports/movements?from=not-a-date', 'reports · nonsense date')
+
+// The export, actually downloaded and actually read. A CSV endpoint that
+// returns an empty body still produces a file, a filename and a satisfied
+// click — which is exactly how the recall pack shipped `{}` with a 200 once.
+{
+  current = 'reports · CSV download'
+  await visit('/reports/stock?grain=LOCATION', 'reports · stock by location')
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 30_000 }).catch(() => null),
+    page
+      .getByRole('button', { name: /download csv/i })
+      .first()
+      .click(),
+  ])
+
+  if (!download) {
+    failures.push({ page: '/reports/stock', kind: 'download', text: 'no file was downloaded' })
+  } else {
+    const stream = await download.createReadStream()
+    let text = ''
+    for await (const chunk of stream) text += chunk
+
+    const lines = text.trim().split('\n')
+
+    if (!/SKU/i.test(lines[0] ?? '')) {
+      failures.push({
+        page: '/reports/stock',
+        kind: 'download',
+        text: `the CSV has no header row: ${JSON.stringify(text.slice(0, 80))}`,
+      })
+    } else if (lines.length < 2) {
+      failures.push({
+        page: '/reports/stock',
+        kind: 'download',
+        text: 'the CSV has a header and no rows, but the screen showed stock',
+      })
+    } else {
+      console.log(`  ✓     reports · downloaded a CSV with ${lines.length - 1} row(s)`)
+    }
+  }
+}
+
 // Follow real links rather than hard-coded ids, so the test breaks if the list
 // pages stop linking anywhere.
 //
