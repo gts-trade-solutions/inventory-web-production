@@ -10,6 +10,16 @@ import {
   runSelfTest,
 } from '@/lib/services/devices'
 import { prisma, seedWarehouse, type Warehouse } from './helpers/warehouse'
+
+/**
+ * The test database is neither LIVE nor DEMO, so each test says which it means.
+ *
+ * LIVE for the tests that exercise a REAL connector against a local double —
+ * the double stands in for hardware, and DEMO would substitute the simulator
+ * and never open the socket. DEMO for the tests that exercise the simulator.
+ */
+const LIVE = 'LIVE' as const
+const DEMO = 'DEMO' as const
 import { startFakePrinter, type FakePrinter } from './helpers/fake-printer'
 import { startFakeLlrpReader, type FakeLlrpReader } from './helpers/fake-llrp-reader'
 
@@ -135,7 +145,7 @@ describe('self-testing a printer', () => {
       address: `127.0.0.1:${printer.port}`,
     })
 
-    const report = await runSelfTest(prisma, device.id)
+    const report = await runSelfTest(prisma, device.id, LIVE)
 
     expect(report.ok).toBe(true)
     expect(report.steps.map((s) => s.name)).toEqual([
@@ -154,7 +164,7 @@ describe('self-testing a printer', () => {
       address: '127.0.0.1:1',
     })
 
-    const report = await runSelfTest(prisma, device.id)
+    const report = await runSelfTest(prisma, device.id, LIVE)
 
     expect(report.ok).toBe(false)
     expect(report.steps).toHaveLength(1)
@@ -171,7 +181,7 @@ describe('self-testing a printer', () => {
       address: '127.0.0.1:1',
     })
 
-    await runSelfTest(prisma, device.id)
+    await runSelfTest(prisma, device.id, LIVE)
     expect((await prisma.device.findUniqueOrThrow({ where: { id: device.id } })).lastSeenAt).toBeNull()
 
     printer = await startFakePrinter()
@@ -180,7 +190,7 @@ describe('self-testing a printer', () => {
       data: { address: `127.0.0.1:${printer.port}` },
     })
 
-    await runSelfTest(prisma, device.id)
+    await runSelfTest(prisma, device.id, LIVE)
     expect(
       (await prisma.device.findUniqueOrThrow({ where: { id: device.id } })).lastSeenAt,
     ).not.toBeNull()
@@ -193,7 +203,7 @@ describe('self-testing a printer', () => {
       connection: DeviceConnection.SIMULATED,
     })
 
-    const report = await runSelfTest(prisma, device.id)
+    const report = await runSelfTest(prisma, device.id, LIVE)
 
     expect(report.ok).toBe(true)
     expect(report.steps[0]?.detail).toMatch(/simulated/i)
@@ -210,7 +220,7 @@ describe('self-testing an RFID reader', () => {
       address: `127.0.0.1:${reader.port}`,
     })
 
-    const report = await runSelfTest(prisma, device.id)
+    const report = await runSelfTest(prisma, device.id, LIVE)
 
     expect(report.steps.map((s) => s.name)).toEqual([
       'Connect',
@@ -229,7 +239,7 @@ describe('self-testing an RFID reader', () => {
       connection: DeviceConnection.SIMULATED,
     })
 
-    const report = await runSelfTest(prisma, device.id)
+    const report = await runSelfTest(prisma, device.id, LIVE)
 
     expect(report.ok).toBe(true)
     expect(report.steps[2]?.detail).toMatch(/simulation/)
@@ -247,7 +257,7 @@ describe('self-testing what the server cannot reach', () => {
       address: 'AA:BB:CC:DD:EE:FF',
     })
 
-    const report = await runSelfTest(prisma, device.id)
+    const report = await runSelfTest(prisma, device.id, LIVE)
 
     expect(report.steps[0]?.detail).toMatch(/browser/i)
     expect(report.steps[0]?.detail).toMatch(/Scan/)
@@ -261,12 +271,12 @@ describe('self-testing what the server cannot reach', () => {
     })
     await retireDevice(prisma, device.id)
 
-    await expect(runSelfTest(prisma, device.id)).rejects.toMatchObject({
+    await expect(runSelfTest(prisma, device.id, LIVE)).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
     })
   })
 
   it('refuses an unknown device', async () => {
-    await expect(runSelfTest(prisma, randomUUID())).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(runSelfTest(prisma, randomUUID(), LIVE)).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 })

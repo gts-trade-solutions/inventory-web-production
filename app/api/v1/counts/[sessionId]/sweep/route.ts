@@ -19,9 +19,9 @@ const schema = z.object({
  * de-duplicated per session, so a client that added the result to its own tally
  * would double a second sweep.
  */
-export const POST = apiRoute({ schema }, async ({ db, body, request }) => {
+export const POST = apiRoute({ schema }, async ({ db, body, request, claims }) => {
   const segments = new URL(request.url).pathname.split('/')
   const sessionId = segments[segments.length - 2]!
 
-  return sweepLocation(db, sessionId, { deviceId: body.deviceId ?? null })
+  return sweepLocation(db, sessionId, { deviceId: body.deviceId ?? null, mode: claims.mode })
 })

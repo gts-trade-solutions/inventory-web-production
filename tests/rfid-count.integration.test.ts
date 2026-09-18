@@ -34,6 +34,9 @@ const GTIN = ean13('890123400004')
  */
 const SESSION_ID = '5f2e1c44-9a7b-4d1e-8c30-7b1d9e4a2c61'
 
+/** The test database is neither LIVE nor DEMO, so the tests say which they mean. */
+const MODE = 'DEMO' as const
+
 beforeEach(async () => {
   wh = await seedWarehouse()
   await prisma.device.deleteMany()
@@ -101,7 +104,7 @@ afterAll(async () => {
 
 describe('sweeping a bay', () => {
   it('reads tags from the units actually on the shelf', async () => {
-    const result = await sweepLocation(prisma, sessionId)
+    const result = await sweepLocation(prisma, sessionId, { mode: MODE })
 
     expect(result.simulated).toBe(true)
     expect(result.distinctTags).toBeGreaterThan(0)
@@ -114,7 +117,7 @@ describe('sweeping a bay', () => {
   it('finds a realistic shortfall rather than a perfect count', async () => {
     // A reader that returns everything every time teaches operators that an
     // exact count is normal, so a real one coming back short looks broken.
-    const result = await sweepLocation(prisma, sessionId)
+    const result = await sweepLocation(prisma, sessionId, { mode: MODE })
 
     const counted = result.counted.find((line) => line.itemId === wh.drillId)
     expect(counted!.quantity).toBeLessThan(20)
@@ -122,7 +125,7 @@ describe('sweeping a bay', () => {
   })
 
   it('resolves tags to items, with names the sheet can display', async () => {
-    const result = await sweepLocation(prisma, sessionId)
+    const result = await sweepLocation(prisma, sessionId, { mode: MODE })
     const line = result.counted.find((candidate) => candidate.itemId === wh.drillId)
 
     expect(line?.itemSku).toBe('TLS-0015')
@@ -132,8 +135,8 @@ describe('sweeping a bay', () => {
   it('does not double-count a second sweep', async () => {
     // Tags are de-duplicated per session, so what comes back is everything the
     // count has read — not just this sweep. A client that added would double.
-    const first = await sweepLocation(prisma, sessionId)
-    const second = await sweepLocation(prisma, sessionId)
+    const first = await sweepLocation(prisma, sessionId, { mode: MODE })
+    const second = await sweepLocation(prisma, sessionId, { mode: MODE })
 
     const firstCount = first.counted.find((l) => l.itemId === wh.drillId)!.quantity
     const secondCount = second.counted.find((l) => l.itemId === wh.drillId)!.quantity
@@ -145,11 +148,11 @@ describe('sweeping a bay', () => {
   it('picks up more on a second sweep, the way a real reader does', async () => {
     // Sweeping again genuinely finds tags the first pass missed. If it did not,
     // "sweep again" would be a button that does nothing.
-    const first = await sweepLocation(prisma, sessionId)
+    const first = await sweepLocation(prisma, sessionId, { mode: MODE })
 
     let total = first.counted.find((l) => l.itemId === wh.drillId)!.quantity
     for (let i = 0; i < 5 && total < 20; i++) {
-      const next = await sweepLocation(prisma, sessionId)
+      const next = await sweepLocation(prisma, sessionId, { mode: MODE })
       total = next.counted.find((l) => l.itemId === wh.drillId)!.quantity
     }
 
@@ -157,8 +160,8 @@ describe('sweeping a bay', () => {
   })
 
   it('reports duplicates rather than treating a re-sweep as an error', async () => {
-    await sweepLocation(prisma, sessionId)
-    const second = await sweepLocation(prisma, sessionId)
+    await sweepLocation(prisma, sessionId, { mode: MODE })
+    const second = await sweepLocation(prisma, sessionId, { mode: MODE })
 
     expect(second.duplicates).toBeGreaterThan(0)
   })
@@ -180,7 +183,7 @@ describe('sweeping a bay', () => {
 
     let sawStray = false
     for (let i = 0; i < 25 && !sawStray; i++) {
-      const result = await sweepLocation(prisma, sessionId)
+      const result = await sweepLocation(prisma, sessionId, { mode: MODE })
       sawStray = result.counted.some((line) => line.itemId === wh.tapeId)
     }
 
@@ -200,7 +203,7 @@ describe('sweeping a bay', () => {
       { userId: wh.userId },
     )
 
-    const result = await sweepLocation(prisma, empty.sessionId)
+    const result = await sweepLocation(prisma, empty.sessionId, { mode: MODE })
 
     expect(result.distinctTags).toBe(0)
     // Tells the operator what to check, rather than just reporting zero.
@@ -212,7 +215,7 @@ describe('refusals', () => {
   it('will not sweep a count that is already submitted', async () => {
     await submitCount(prisma, sessionId, [])
 
-    await expect(sweepLocation(prisma, sessionId)).rejects.toMatchObject({
+    await expect(sweepLocation(prisma, sessionId, { mode: MODE })).rejects.toMatchObject({
       code: 'SESSION_ALREADY_SUBMITTED',
     })
   })
@@ -220,7 +223,7 @@ describe('refusals', () => {
   it('says so when no reader is set up', async () => {
     await prisma.device.deleteMany({ where: { kind: DeviceKind.RFID_READER } })
 
-    await expect(sweepLocation(prisma, sessionId)).rejects.toThrow(/No RFID reader/)
+    await expect(sweepLocation(prisma, sessionId, { mode: MODE })).rejects.toThrow(/No RFID reader/)
   })
 
   it('will not use a retired reader', async () => {
@@ -229,19 +232,19 @@ describe('refusals', () => {
     })
     await prisma.device.update({ where: { id: reader.id }, data: { active: false } })
 
-    await expect(sweepLocation(prisma, sessionId, { deviceId: reader.id })).rejects.toMatchObject({
+    await expect(sweepLocation(prisma, sessionId, { deviceId: reader.id, mode: MODE })).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
     })
   })
 
   it('refuses an unknown session', async () => {
-    await expect(sweepLocation(prisma, randomUUID())).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(sweepLocation(prisma, randomUUID(), { mode: MODE })).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 })
 
 describe('the whole loop', () => {
   it('sweeps, submits a variance, and posts it on approval', async () => {
-    const sweep = await sweepLocation(prisma, sessionId)
+    const sweep = await sweepLocation(prisma, sessionId, { mode: MODE })
     const found = sweep.counted.find((line) => line.itemId === wh.drillId)!.quantity
 
     // Submitting writes nothing to the ledger (WADR-008).
@@ -256,7 +259,7 @@ describe('the whole loop', () => {
   })
 
   it('records the correction as a COUNT movement, not an adjustment', async () => {
-    const sweep = await sweepLocation(prisma, sessionId)
+    const sweep = await sweepLocation(prisma, sessionId, { mode: MODE })
     await submitCount(prisma, sessionId, sweep.counted)
     await approveCount(prisma, sessionId, { userId: wh.userId })
 
@@ -269,7 +272,7 @@ describe('the whole loop', () => {
   })
 
   it('leaves the projection matching the ledger afterwards', async () => {
-    const sweep = await sweepLocation(prisma, sessionId)
+    const sweep = await sweepLocation(prisma, sessionId, { mode: MODE })
     await submitCount(prisma, sessionId, sweep.counted)
     await approveCount(prisma, sessionId, { userId: wh.userId })
 

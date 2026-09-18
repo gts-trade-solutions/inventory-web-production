@@ -6,7 +6,7 @@ import { SimulatedRfidReader } from '@/lib/devices/simulated/rfid-reader'
 import { LlrpReader } from '@/lib/devices/server/llrp-reader'
 import type { LlrpTagRead } from '@/lib/devices/llrp/protocol'
 import { publishTagReads } from '@/lib/events/publish'
-import { modeOf } from '@/lib/mode'
+import type { AppMode } from '@/lib/mode'
 import { countedFromSessionTags, recordTagReads } from './counts'
 import { isSimulated } from './devices'
 import { splitAddress } from './printing'
@@ -64,7 +64,7 @@ const REAL_SWEEP_MS = 3_000
 export async function sweepLocation(
   db: PrismaClient,
   sessionId: string,
-  options: { deviceId?: string | null } = {},
+  options: { deviceId?: string | null; mode: AppMode },
 ): Promise<SweepResult> {
   const session = await db.countSession.findUnique({
     where: { id: sessionId },
@@ -79,7 +79,19 @@ export async function sweepLocation(
   }
 
   const device = await resolveReader(db, session.siteId, options.deviceId ?? null)
-  const simulated = isSimulated(device)
+
+  // The mode decides, before anything about the device does. A demo must never
+  // reach a real reader, and a live sweep must never be quietly simulated —
+  // it would report stock as present that nobody looked for (DEMO_MODE §7.3).
+  const mode = options.mode
+  const simulated = mode === 'DEMO'
+
+  if (!simulated && isSimulated(device)) {
+    throw new ApiError(
+      ErrorCode.VALIDATION_FAILED,
+      `"${device.label}" has no network address, so it cannot sweep anything. Add one under Devices, or switch to Demo mode.`,
+    )
+  }
 
   const reads = simulated
     ? await simulatedSweep(db, session.locationId, sessionId)
@@ -94,7 +106,7 @@ export async function sweepLocation(
   const distinct = new Set(reads.map((read) => read.epc)).size
 
   publishTagReads({
-    mode: modeOf(db),
+    mode,
     siteId: session.siteId,
     sessionId,
     device: device.label,

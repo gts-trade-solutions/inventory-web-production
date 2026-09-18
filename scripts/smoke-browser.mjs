@@ -18,6 +18,8 @@ import { DEMO_ACCOUNTS } from '../lib/demo-accounts.ts'
 
 const BASE = process.argv[2] ?? 'http://localhost:3000'
 const SUPERVISOR = DEMO_ACCOUNTS.find((account) => account.role === 'SUPERVISOR')
+// Reset is admin-only, so the last act of the run signs in again as one.
+const ADMIN = DEMO_ACCOUNTS.find((account) => account.role === 'ADMIN')
 const EMAIL = process.env.SMOKE_EMAIL ?? SUPERVISOR.email
 const PASSWORD = process.env.SMOKE_PASSWORD ?? SUPERVISOR.password
 
@@ -276,6 +278,54 @@ if ((await selfTest.count()) === 0) {
       kind: 'stream',
       text: 'the self-test event never reached the live console',
     })
+  }
+}
+
+// --- demo reset ----------------------------------------------------------
+// Clicked for real. This is the one path the integration tests deliberately do
+// not exercise, because running it there would wipe the demo database out from
+// under whoever is looking at it.
+{
+  current = 'devices · demo reset'
+
+  // The signed-in account is a SUPERVISOR, and reset is admin-only. Its absence
+  // here is the guardrail working, so it is asserted rather than assumed.
+  if ((await page.getByRole('button', { name: /^reset demo data$/i }).count()) > 0) {
+    failures.push({
+      page: '/devices',
+      kind: 'permission',
+      text: 'a supervisor can see the admin-only demo reset',
+    })
+  }
+  console.log('  ✓     devices · reset hidden from a supervisor')
+
+  // Now as an administrator, who may. Signing out by clearing the session
+  // cookie rather than by finding a sign-out control, so this check does not
+  // break when the menu is rearranged.
+  await context.clearCookies()
+  await visit('/login', 'login as admin')
+  await page.getByRole('button', { name: /demo/i }).first().click()
+  await page.fill('#email', ADMIN.email)
+  await page.fill('#password', ADMIN.password)
+  await page.getByRole('button', { name: /enter demo|sign in/i }).click()
+  await page.waitForURL(/dashboard/, { timeout: 30_000 })
+  await visit('/devices', '/devices as admin')
+
+  const reset = page.getByRole('button', { name: /^reset demo data$/i }).first()
+
+  if ((await reset.count()) === 0) {
+    failures.push({ page: '/devices', kind: 'missing', text: 'an admin cannot see demo reset' })
+  } else {
+    await reset.click()
+
+    // A second click, not a dialog: the same guard, and it keeps the
+    // consequence on screen while the operator decides.
+    await page.getByText(/will be destroyed/i).first().waitFor({ timeout: 10_000 })
+    await page.getByRole('button', { name: /yes, reset it/i }).click()
+
+    await page.getByText(/Demo data reset in/i).first().waitFor({ timeout: 120_000 })
+    const note = await page.getByText(/Demo data reset in/i).first().textContent()
+    console.log(`  ✓     devices · ${note?.trim().slice(0, 60)}`)
   }
 }
 

@@ -89,6 +89,7 @@ export async function printLabelAction(
       user.db,
       { ...input, fields, epcs, copies: epcs ? 1 : input.copies },
       { userId: user.userId },
+      user.mode,
     )
 
     revalidatePath('/labels')

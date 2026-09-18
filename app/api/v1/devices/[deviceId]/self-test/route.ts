@@ -10,9 +10,9 @@ import { runSelfTest } from '@/lib/services/devices'
  *
  * Returns a report per step, never a boolean.
  */
-export const POST = apiRoute({}, async ({ db, request }) => {
+export const POST = apiRoute({}, async ({ db, request, claims }) => {
   const segments = new URL(request.url).pathname.split('/')
   const deviceId = segments[segments.length - 2]!
 
-  return runSelfTest(db, deviceId)
+  return runSelfTest(db, deviceId, claims.mode)
 })

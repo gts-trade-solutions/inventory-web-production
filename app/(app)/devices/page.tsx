@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import { DeviceKind } from '@prisma/client'
 import { Cpu, Printer, Radio, ScanLine, Smartphone } from 'lucide-react'
-import { requireUser } from '@/lib/auth/guards'
+import { UserRole } from '@prisma/client'
+import { requireUser, roleAtLeast } from '@/lib/auth/guards'
 import { STALE_AFTER_MINUTES, listDevices, type DeviceRow } from '@/lib/services/devices'
 import { PageHeader } from '@/components/page-header'
 import { EmptyState } from '@/components/empty-state'
@@ -10,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { signAccessToken } from '@/lib/api/jwt'
 import { SelfTestButton } from './self-test-button'
 import { EventConsole } from './event-console'
+import { DemoReset } from './demo-reset'
 
 export const metadata: Metadata = { title: 'Devices' }
 
@@ -66,8 +68,12 @@ export default async function DevicesPage() {
         description="Every scanner, reader and printer the system knows about — and whether it is working."
       />
 
-      <div className="mb-6">
+      <div className="mb-6 space-y-6">
         <EventConsole token={streamToken} />
+
+        {/* Only in DEMO, and only for an admin. In LIVE the service would refuse
+            anyway, but offering a button that always fails is its own problem. */}
+        {user.mode === 'DEMO' && roleAtLeast(user.role, UserRole.ADMIN) && <DemoReset />}
       </div>
 
       {devices.length === 0 ? (

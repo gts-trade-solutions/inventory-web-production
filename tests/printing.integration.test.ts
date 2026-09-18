@@ -60,6 +60,16 @@ afterAll(async () => {
 })
 
 const actor = () => ({ userId: wh.userId })
+
+/**
+ * The test database is neither LIVE nor DEMO, so each test says which it means.
+ *
+ * LIVE for the tests that exercise a REAL connector against a local double —
+ * the double stands in for hardware, and DEMO would substitute the simulator
+ * and never open the socket. DEMO for the tests that exercise the simulator.
+ */
+const LIVE = 'LIVE' as const
+const DEMO = 'DEMO' as const
 const FIELDS = { itemName: 'Cordless drill', sku: 'TLS-0015' }
 
 async function registerNetworkPrinter(port: number): Promise<string> {
@@ -98,6 +108,7 @@ describe('printing to a networked printer', () => {
       prisma,
       { templateId, printerDeviceId: deviceId, fields: FIELDS, itemId: wh.drillId },
       actor(),
+      LIVE,
     )
 
     expect(result.status).toBe(PrintJobStatus.SENT)
@@ -115,6 +126,7 @@ describe('printing to a networked printer', () => {
       prisma,
       { templateId, printerDeviceId: deviceId, fields: FIELDS, itemId: wh.drillId },
       actor(),
+      LIVE,
     )
 
     expect(result.status).toBe(PrintJobStatus.FAILED)
@@ -131,8 +143,8 @@ describe('printing to a networked printer', () => {
     printer = await startFakePrinter()
     const deviceId = await registerNetworkPrinter(printer.port)
 
-    const first = await submitPrintJob(prisma, { templateId, printerDeviceId: deviceId, fields: FIELDS }, actor())
-    const second = await submitPrintJob(prisma, { templateId, printerDeviceId: deviceId, fields: FIELDS }, actor())
+    const first = await submitPrintJob(prisma, { templateId, printerDeviceId: deviceId, fields: FIELDS }, actor(), LIVE)
+    const second = await submitPrintJob(prisma, { templateId, printerDeviceId: deviceId, fields: FIELDS }, actor(), LIVE)
 
     expect(first.docNo).toMatch(/^PRN-\d{4}-\d{6}$/)
     expect(second.docNo).not.toBe(first.docNo)
@@ -146,6 +158,7 @@ describe('printing to a networked printer', () => {
       prisma,
       { templateId, printerDeviceId: deviceId, fields: FIELDS, copies: 12 },
       actor(),
+      LIVE,
     )
 
     expect(result.labels).toBe(12)
@@ -174,6 +187,7 @@ describe('RFID encoding', () => {
         itemId: wh.drillId,
       },
       actor(),
+      LIVE,
     )
 
     expect(result.labels).toBe(2)
@@ -198,6 +212,7 @@ describe('RFID encoding', () => {
         itemId: wh.drillId,
       },
       actor(),
+      LIVE,
     )
 
     const stored = await prisma.printJob.findUniqueOrThrow({ where: { id: result.jobId } })
@@ -217,6 +232,7 @@ describe('RFID encoding', () => {
         prisma,
         { templateId, printerDeviceId: deviceId, fields: FIELDS, epcs: [EPC_A] },
         actor(),
+        DEMO,
       ),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
   })
@@ -225,7 +241,7 @@ describe('RFID encoding', () => {
     const deviceId = await registerSimulatedPrinter()
 
     await expect(
-      submitPrintJob(prisma, { templateId: rfidTemplateId, printerDeviceId: deviceId, fields: FIELDS }, actor()),
+      submitPrintJob(prisma, { templateId: rfidTemplateId, printerDeviceId: deviceId, fields: FIELDS }, actor(), DEMO),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
   })
 })
@@ -241,6 +257,7 @@ describe('refusals', () => {
         prisma,
         { templateId, printerDeviceId: deviceId, fields: { itemName: 'Drill' } },
         actor(),
+        DEMO,
       ),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
 
@@ -250,26 +267,26 @@ describe('refusals', () => {
 
   it('refuses an unknown template', async () => {
     await expect(
-      submitPrintJob(prisma, { templateId: randomUUID(), fields: FIELDS }, actor()),
+      submitPrintJob(prisma, { templateId: randomUUID(), fields: FIELDS }, actor(), LIVE),
     ).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 
   it('refuses a retired template', async () => {
     await prisma.labelTemplate.update({ where: { id: templateId }, data: { active: false } })
 
-    await expect(submitPrintJob(prisma, { templateId, fields: FIELDS }, actor())).rejects.toMatchObject(
+    await expect(submitPrintJob(prisma, { templateId, fields: FIELDS }, actor(), LIVE)).rejects.toMatchObject(
       { code: 'NOT_FOUND' },
     )
   })
 
   it('refuses a printer that is not registered', async () => {
     await expect(
-      submitPrintJob(prisma, { templateId, printerDeviceId: randomUUID(), fields: FIELDS }, actor()),
+      submitPrintJob(prisma, { templateId, printerDeviceId: randomUUID(), fields: FIELDS }, actor(), LIVE),
     ).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 
   it('says so plainly when no printer exists at all', async () => {
-    await expect(submitPrintJob(prisma, { templateId, fields: FIELDS }, actor())).rejects.toThrow(
+    await expect(submitPrintJob(prisma, { templateId, fields: FIELDS }, actor(), LIVE)).rejects.toThrow(
       /No printer is set up/,
     )
   })
@@ -283,6 +300,7 @@ describe('the simulator', () => {
       prisma,
       { templateId, printerDeviceId: deviceId, fields: FIELDS },
       actor(),
+      DEMO,
     )
 
     expect(result.simulated).toBe(true)
@@ -292,9 +310,12 @@ describe('the simulator', () => {
     expect(result.message).toContain('simulation')
   })
 
-  it('is used for a printer registered with no address', async () => {
-    // A misconfigured row prints into the simulator and says so on screen,
-    // rather than failing with a socket error nobody on the floor can read.
+  it('stands in for a half-configured printer in DEMO, and refuses in LIVE', async () => {
+    // This used to fall back to the simulator in BOTH modes, on the reasoning
+    // that "(simulation)" beats an unreadable socket error. That is right in
+    // DEMO and wrong in LIVE: an operator asking for fifty RFID labels would
+    // see "Printed 50 (simulation)" with no labels and fifty EPCs consumed
+    // against units that never got a tag (DEMO_MODE §7.3).
     const id = randomUUID()
     await prisma.device.create({
       data: {
@@ -306,13 +327,17 @@ describe('the simulator', () => {
       },
     })
 
-    const result = await submitPrintJob(
+    const demo = await submitPrintJob(
       prisma,
       { templateId, printerDeviceId: id, fields: FIELDS },
       actor(),
+      DEMO,
     )
+    expect(demo.simulated).toBe(true)
 
-    expect(result.simulated).toBe(true)
+    await expect(
+      submitPrintJob(prisma, { templateId, printerDeviceId: id, fields: FIELDS }, actor(), LIVE),
+    ).rejects.toThrow(/no network address/i)
   })
 })
 
@@ -324,6 +349,7 @@ describe('history', () => {
       prisma,
       { templateId, printerDeviceId: deviceId, fields: FIELDS, itemId: wh.drillId },
       actor(),
+      DEMO,
     )
 
     const [job] = await listPrintJobs(prisma, { itemId: wh.drillId })

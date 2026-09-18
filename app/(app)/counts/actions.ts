@@ -93,7 +93,7 @@ export async function sweepWithReaderAction(sessionId: string): Promise<
   }
 
   try {
-    return { ok: true, result: await sweepLocation(user.db, sessionId) }
+    return { ok: true, result: await sweepLocation(user.db, sessionId, { mode: user.mode }) }
   } catch (error) {
     return { ok: false, error: messageOf(error, 'The reader could not be used.') }
   }

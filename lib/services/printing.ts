@@ -16,7 +16,7 @@ import {
   type LabelFields,
 } from '@/lib/labels/zpl'
 import { publishPrint } from '@/lib/events/publish'
-import { modeOf } from '@/lib/mode'
+import type { AppMode } from '@/lib/mode'
 import { allocateDocNo } from './numbering'
 
 /**
@@ -64,6 +64,15 @@ export async function submitPrintJob(
   db: PrismaClient,
   request: PrintRequest,
   actor: { userId: string },
+  /**
+   * Explicit, and required.
+   *
+   * It used to be derived from the Prisma client, which works in production and
+   * is wrong everywhere else: a test database is neither LIVE nor DEMO, so the
+   * derivation quietly answered LIVE and no simulator could be exercised. A
+   * guardrail whose input is guessed is not a guardrail (DEMO_MODE §7.3).
+   */
+  mode: AppMode,
 ): Promise<PrintJobResult> {
   const template = await db.labelTemplate.findUnique({ where: { id: request.templateId } })
   if (!template || !template.active) {
@@ -71,7 +80,7 @@ export async function submitPrintJob(
   }
 
   const zpl = buildZpl(template, request)
-  const { connector, deviceId } = await resolvePrinter(db, request.printerDeviceId ?? null)
+  const { connector, deviceId } = await resolvePrinter(db, request.printerDeviceId ?? null, mode)
 
   // Recorded first, as QUEUED. If the process dies between here and the socket,
   // the job is visible as unfinished rather than absent.
@@ -114,7 +123,7 @@ export async function submitPrintJob(
   })
 
   publishPrint({
-    mode: modeOf(db),
+    mode,
     siteId: null,
     docNo,
     printer: connector.label,
@@ -204,15 +213,14 @@ function buildZpl(
 /**
  * Picks the connector for a printer.
  *
- * A device with no network address is a simulator, whatever else it says. That
- * is deliberate: a misconfigured printer row prints into the simulator and says
- * "(simulation)" on screen, rather than failing with a socket error nobody on
- * the floor can interpret.
+ * The mode decides, before anything about the device does (DEMO_MODE §7.3).
  */
 export async function resolvePrinter(
   db: PrismaClient,
   printerDeviceId: string | null,
+  mode: AppMode,
 ): Promise<{ connector: PrinterConnector; deviceId: string | null }> {
+
   if (!printerDeviceId) {
     const fallback = await db.device.findFirst({
       where: { kind: DeviceKind.PRINTER, active: true },
@@ -225,7 +233,7 @@ export async function resolvePrinter(
         'No printer is set up yet. Add one under Admin → Devices, or run in Demo mode to use the simulator.',
       )
     }
-    return { connector: connectorFor(fallback), deviceId: fallback.id }
+    return { connector: connectorFor(fallback, mode), deviceId: fallback.id }
   }
 
   const device = await db.device.findUnique({ where: { id: printerDeviceId } })
@@ -236,20 +244,44 @@ export async function resolvePrinter(
     throw new ApiError(ErrorCode.VALIDATION_FAILED, `"${device.label}" has been retired.`)
   }
 
-  return { connector: connectorFor(device), deviceId: device.id }
+  return { connector: connectorFor(device, mode), deviceId: device.id }
 }
 
-export function connectorFor(device: {
-  label: string
-  connection: DeviceConnection
-  address: string | null
-}): PrinterConnector {
-  if (device.connection === DeviceConnection.NETWORK && device.address) {
-    const [host, port] = splitAddress(device.address)
-    return new TcpPrinter({ host, port, label: device.label })
+/**
+ * Real hardware in LIVE, a simulator in DEMO, and never the other way round.
+ *
+ * `mode` is a required argument rather than something derived inside, so this
+ * cannot be called without deciding it. That is the whole guardrail: a demo
+ * must not be able to print on the warehouse printer, and a live print must not
+ * silently go to a simulator (DEMO_MODE §7.3).
+ *
+ * The LIVE half is a correction to how this worked before. It used to fall back
+ * to the simulator whenever a device had no address, on the reasoning that a
+ * half-configured printer saying "(simulation)" beats an unreadable socket
+ * error. That is right in DEMO and wrong in LIVE: an operator asking for fifty
+ * RFID labels would see "Printed 50 (simulation)", and there would be no labels
+ * and fifty EPCs consumed against units that never got a tag. In LIVE it now
+ * refuses, and says what to fix.
+ */
+export function connectorFor(
+  device: { label: string; connection: DeviceConnection; address: string | null },
+  mode: AppMode,
+): PrinterConnector {
+  if (mode === 'DEMO') {
+    // Whatever the row says. A demo device row carrying a real address is a
+    // configuration mistake, not permission to reach the warehouse.
+    return new SimulatedPrinter(device.label)
   }
 
-  return new SimulatedPrinter(device.label)
+  if (device.connection !== DeviceConnection.NETWORK || !device.address) {
+    throw new ApiError(
+      ErrorCode.VALIDATION_FAILED,
+      `"${device.label}" has no network address, so nothing can be printed on it. Add one under Devices, or switch to Demo mode to use the simulator.`,
+    )
+  }
+
+  const [host, port] = splitAddress(device.address)
+  return new TcpPrinter({ host, port, label: device.label })
 }
 
 /** `host` or `host:port`. */

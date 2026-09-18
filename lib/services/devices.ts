@@ -8,7 +8,7 @@ import { SimulatedRfidReader } from '@/lib/devices/simulated/rfid-reader'
 import { TcpPrinter } from '@/lib/devices/server/tcp-printer'
 import { LlrpReader } from '@/lib/devices/server/llrp-reader'
 import { publishDevice } from '@/lib/events/publish'
-import { modeOf } from '@/lib/mode'
+import type { AppMode } from '@/lib/mode'
 import { splitAddress } from './printing'
 
 /**
@@ -126,7 +126,11 @@ export async function deviceById(db: PrismaClient, id: string): Promise<DeviceRo
  * opened but ~HS timed out", which tells somebody what to go and look at
  * (DEVICE_INTEGRATION §11.3).
  */
-export async function runSelfTest(db: PrismaClient, deviceId: string): Promise<SelfTestReport> {
+export async function runSelfTest(
+  db: PrismaClient,
+  deviceId: string,
+  mode: AppMode,
+): Promise<SelfTestReport> {
   const device = await deviceById(db, deviceId)
 
   if (!device.active) {
@@ -136,7 +140,9 @@ export async function runSelfTest(db: PrismaClient, deviceId: string): Promise<S
     )
   }
 
-  const report = await selfTestFor(device)
+  // The mode decides which connector runs, so a demo self-test can never open
+  // a socket to warehouse hardware (DEMO_MODE §7.3).
+  const report = await selfTestFor(device, mode)
 
   // A self-test IS contact with the device, so a passing one updates lastSeenAt
   // and a failing one deliberately does not.
@@ -145,7 +151,7 @@ export async function runSelfTest(db: PrismaClient, deviceId: string): Promise<S
   }
 
   publishDevice({
-    mode: modeOf(db),
+    mode,
     siteId: null,
     device: device.label,
     detail: report.ok
@@ -157,8 +163,8 @@ export async function runSelfTest(db: PrismaClient, deviceId: string): Promise<S
   return report
 }
 
-async function selfTestFor(device: DeviceRow): Promise<SelfTestReport> {
-  if (device.simulated) {
+async function selfTestFor(device: DeviceRow, mode: AppMode): Promise<SelfTestReport> {
+  if (mode === 'DEMO' || device.simulated) {
     switch (device.kind) {
       case DeviceKind.PRINTER:
         return new SimulatedPrinter(device.label).selfTest()

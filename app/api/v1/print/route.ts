@@ -26,7 +26,7 @@ const schema = z.object({
  * what we actually know, and keep reprint one tap away.
  */
 export const POST = apiRoute({ schema }, async ({ db, body, claims }) =>
-  submitPrintJob(db, body, { userId: claims.userId }),
+  submitPrintJob(db, body, { userId: claims.userId }, claims.mode),
 )
 
 /** Print history — the audit trail behind every physical tag. */
