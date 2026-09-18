@@ -204,7 +204,9 @@ await visit('/reports/movements?from=not-a-date', 'reports · nonsense date')
         text: `filtered to receipts but exported ${[...types].join(', ')}`,
       })
     } else {
-      console.log(`  ✓     movements · filtered export honoured the filter, ${lines.length - 1} row(s)`)
+      console.log(
+        `  ✓     movements · filtered export honoured the filter, ${lines.length - 1} row(s)`,
+      )
     }
   }
 }
@@ -274,9 +276,126 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
   await visit(`/movements/new?item=${itemId}&kind=${kind}`, `movement form · ${kind}`)
 }
 
+// --- scanning, which is the beat every demo opens with -------------------
+// Driven through the manual box rather than the keyboard wedge: the wedge
+// recognises a scan by TIMING, so a synthetic keystroke sequence either races
+// or needs a fake clock, and a flaky check on the demo's first beat is worse
+// than none. The manual box takes the same code path from the lookup onwards.
+{
+  current = 'scan · lookup'
+  await visit('/scan')
+
+  const box = page.getByLabel(/enter a code manually/i).first()
+  if ((await box.count()) === 0) {
+    failures.push({ page: '/scan', kind: 'missing', text: 'no way to enter a code' })
+  } else {
+    // A barcode the screen itself offers, so this cannot drift from the seed.
+    const demoCode = await page
+      .getByRole('button', { name: /^\d{8,14}$/ })
+      .first()
+      .textContent()
+      .catch(() => null)
+
+    if (!demoCode) {
+      failures.push({
+        page: '/scan',
+        kind: 'missing',
+        text: 'the scan screen offered no demo barcode to try',
+      })
+    } else {
+      await box.fill(demoCode.trim())
+      await box.press('Enter')
+
+      try {
+        // The resolved item, not merely "something happened".
+        await page
+          .getByText(/receive|issue|on hand|found/i)
+          .first()
+          .waitFor({ timeout: 30_000 })
+        console.log(`  ✓     scan · ${demoCode.trim()} resolved to something actionable`)
+      } catch {
+        failures.push({
+          page: '/scan',
+          kind: 'flow',
+          text: `scanning ${demoCode.trim()} resolved to nothing`,
+        })
+      }
+    }
+  }
+}
+
+// --- FEFO and the expiry block -------------------------------------------
+// Two demo beats that nothing checked. Both are decisions the system makes on
+// the operator's behalf, which is exactly the kind of thing that can quietly
+// stop happening: the form still renders, the issue still posts, and nobody
+// notices the oldest stock is no longer being proposed.
+{
+  current = 'movements · FEFO'
+  await visit('/inventory?tracking=batch', 'inventory · batch-tracked')
+
+  const batchItemHref = await firstRecordHref('/inventory/')
+  if (!batchItemHref) {
+    failures.push({
+      page: '/inventory?tracking=batch',
+      kind: 'no link',
+      text: 'no batch-tracked item to demonstrate FEFO with',
+    })
+  } else {
+    const batchItemId = batchItemHref.split('/').pop()
+
+    // A location first. FEFO is per-location by design — there is no "oldest
+    // stock" until you say where you are picking from — so the form proposes
+    // nothing until one is chosen, and checking without one proves nothing.
+    await visit(`/movements/new?item=${batchItemId}&kind=issue`, 'movement form · FEFO issue')
+
+    const fromSelect = page.locator('select[name="fromLocationId"]').first()
+    const locationId =
+      (await fromSelect.count()) > 0
+        ? await fromSelect.locator('option').nth(1).getAttribute('value')
+        : null
+
+    if (!locationId) {
+      failures.push({
+        page: 'movement form · issue',
+        kind: 'missing',
+        text: 'no location to issue from, so FEFO could not be demonstrated',
+      })
+    }
+
+    await visit(
+      `/movements/new?item=${batchItemId}&kind=issue&from=${locationId}&qty=1`,
+      'movement form · FEFO issue from a location',
+    )
+
+    // "Use first" is the proposal. Without it an operator picks a batch at
+    // random and the oldest stock expires on the shelf.
+    const proposed = await page.getByText(/use first/i).count()
+    if (proposed === 0) {
+      failures.push({
+        page: 'movement form · issue',
+        kind: 'fefo',
+        text: 'no batch was proposed to use first',
+      })
+    } else {
+      console.log('  ✓     movements · FEFO proposed a batch to use first')
+    }
+
+    // And the block. An expired or quarantined batch has to be visibly
+    // refused rather than silently offered.
+    const blocked = await page.getByText(/expired|quarantine/i).count()
+    if (blocked === 0) {
+      console.log('  ·     movements · no expired batch in the demo data to block right now')
+    } else {
+      console.log('  ✓     movements · an expired or quarantined batch is flagged on the form')
+    }
+  }
+}
+
 // --- an RFID cycle count, start to finish --------------------------------
 // The flagship workflow. Driven end to end because every piece works in
 // isolation and the question that matters is whether they work together.
+let countSessionUrl = null
+
 {
   await visit('/counts')
 
@@ -326,8 +445,142 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
           text: `sweep result did not say it was simulated: ${note}`,
         })
       }
+
+      // Submit, then approve. This is the payoff of the whole count and the
+      // only part that writes to the ledger — and until now the smoke test
+      // stopped one step before it, so the beat the demo ends on was the beat
+      // nothing checked.
+      current = 'counts · submit'
+      countSessionUrl = page.url()
+
+      const submit = page.getByRole('button', { name: /submit for approval/i }).first()
+      if ((await submit.count()) === 0) {
+        failures.push({ page: 'counts', kind: 'missing', text: 'no way to submit a count' })
+      } else {
+        await submit.click()
+
+        try {
+          await page
+            .getByRole('button', { name: /approve and post/i })
+            .first()
+            .waitFor({ timeout: 30_000 })
+          console.log('  ✓     counts · submitted for approval')
+        } catch {
+          failures.push({
+            page: 'counts',
+            kind: 'flow',
+            text: 'submitting did not produce a count awaiting approval',
+          })
+        }
+      }
     }
   }
+}
+
+// --- approving the count, which is the only part that posts stock --------
+// A separate block because it is a separate decision: the counter submits, a
+// supervisor decides. The smoke account IS a supervisor, so the same session
+// can do both — what is being checked here is that approving actually posts
+// COUNT movements rather than merely changing a status.
+if (countSessionUrl) {
+  current = 'counts · approve'
+  await visit(countSessionUrl.replace(BASE, ''), 'counts · review')
+
+  const approve = page.getByRole('button', { name: /approve and post/i }).first()
+
+  if ((await approve.count()) === 0) {
+    failures.push({
+      page: 'counts · review',
+      kind: 'missing',
+      text: 'a supervisor was offered no way to approve a submitted count',
+    })
+  } else {
+    // Whether this count found anything to correct, read from the screen
+    // BEFORE approving. A count that matched the system posts nothing, and
+    // that is correct — so "no COUNT movements afterwards" is only a failure
+    // when there was in fact a variance. The simulated reader misses tags on
+    // purpose, so there usually is one, but a test that depends on that is a
+    // test that fails at random.
+    const nothingToCorrect = (await page.getByText(/found nothing to correct/i).count()) > 0
+
+    // Counting the ledger navigates away, so it happens BEFORE the button is
+    // found again. Clicking a locator from the previous page would fail in a
+    // way that reads like a broken approval.
+    const before = await countLedgerRows()
+    await page.goto(countSessionUrl, { waitUntil: 'networkidle' })
+
+    await page
+      .getByRole('button', { name: /approve and post/i })
+      .first()
+      .click()
+
+    try {
+      // The session's own state once approved, not the action's transient
+      // message: approving flips the status, which removes the whole review
+      // block — message and all — and replaces it with this. Two earlier
+      // selectors got this wrong in opposite directions, one matching text
+      // that was already on the page before anything happened, the other
+      // waiting for a message that correctly no longer exists.
+      await page
+        .getByText(/Approved by /i)
+        .first()
+        .waitFor({ timeout: 60_000 })
+
+      const verdict = await page
+        .getByText(/Approved by /i)
+        .first()
+        .textContent()
+
+      const after = await countLedgerRows()
+
+      if (nothingToCorrect) {
+        // Approving a clean count must not invent corrections.
+        if (after !== before) {
+          failures.push({
+            page: 'counts · approve',
+            kind: 'flow',
+            text: `a count with nothing to correct still posted ${after - before} movement(s)`,
+          })
+        } else {
+          console.log('  ✓     counts · approved a clean count, and posted nothing')
+        }
+      } else if (after <= before) {
+        // The ledger is the actual claim. Without a new row, "approved" was a
+        // label on nothing.
+        failures.push({
+          page: 'counts · approve',
+          kind: 'flow',
+          text: 'the count had variances and was approved, but no COUNT movement reached the ledger',
+        })
+      } else {
+        console.log(
+          `  ✓     counts · ${verdict?.trim()} (${after - before} new CNT row(s) in the ledger)`,
+        )
+      }
+    } catch {
+      // Including the error the action reported, if it reported one. "No
+      // result" and "refused because X" are different problems.
+      const reported = await page
+        .getByText(/could not be approved|not valid|forbidden/i)
+        .first()
+        .textContent()
+        .catch(() => null)
+
+      failures.push({
+        page: 'counts · approve',
+        kind: 'flow',
+        text: reported
+          ? `approving was refused: ${reported.trim()}`
+          : 'approving reported no result at all',
+      })
+    }
+  }
+}
+
+/** COUNT rows currently in the ledger, read from the movements list. */
+async function countLedgerRows() {
+  await page.goto(`${BASE}/movements?type=count`, { waitUntil: 'networkidle' })
+  return page.getByText(/CNT-/i).count()
 }
 
 // --- printing a label ----------------------------------------------------
