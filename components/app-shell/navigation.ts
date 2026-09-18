@@ -10,6 +10,7 @@ import {
   Printer,
   ScanLine,
   Settings,
+  Smartphone,
   Layers,
   ArrowLeftRight,
   BarChart3,
@@ -32,6 +33,9 @@ export interface NavItem {
   /** Phases that have not landed yet are shown greyed rather than hidden, so the
    *  shape of the finished product is visible while it is being built. */
   comingSoon?: boolean
+  /** Shown only in Demo mode. A 'switch the network off' button on a live
+   *  warehouse screen is an invitation to a confusing afternoon. */
+  demoOnly?: boolean
 }
 
 export interface NavSection {
@@ -63,6 +67,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/devices', label: 'Devices', icon: Cpu },
       { href: '/labels', label: 'Labels & printing', icon: Printer },
+      { href: '/demo/handset', label: 'Simulated handset', icon: Smartphone, demoOnly: true },
     ],
   },
   {

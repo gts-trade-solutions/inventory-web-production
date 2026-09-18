@@ -16,7 +16,7 @@ import {
   type LabelFields,
 } from '@/lib/labels/zpl'
 import { publishPrint } from '@/lib/events/publish'
-import type { AppMode } from '@/lib/mode'
+import { allowsOutboundEffects, type AppMode } from '@/lib/mode'
 import { allocateDocNo } from './numbering'
 
 /**
@@ -267,9 +267,12 @@ export function connectorFor(
   device: { label: string; connection: DeviceConnection; address: string | null },
   mode: AppMode,
 ): PrinterConnector {
-  if (mode === 'DEMO') {
-    // Whatever the row says. A demo device row carrying a real address is a
-    // configuration mistake, not permission to reach the warehouse.
+  // Printing on real hardware is an outbound effect — it reaches out of the
+  // system and into the physical world — so it is gated by the same rule as
+  // email, webhooks and integrations will be (DEMO_MODE §7.4). Whatever the row
+  // says: a demo device carrying a real address is a configuration mistake, not
+  // permission to reach the warehouse.
+  if (!allowsOutboundEffects(mode)) {
     return new SimulatedPrinter(device.label)
   }
 

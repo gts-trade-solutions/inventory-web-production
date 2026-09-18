@@ -4,12 +4,21 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Boxes } from 'lucide-react'
 import type { UserRole } from '@prisma/client'
+import type { AppMode } from '@/lib/mode'
 import { NAV_SECTIONS } from './navigation'
 import { cn } from '@/lib/utils'
 
 const ROLE_RANK: Record<UserRole, number> = { USER: 1, SUPERVISOR: 2, ADMIN: 3 }
 
-export function Sidebar({ role, onNavigate }: { role: UserRole; onNavigate?: () => void }) {
+export function Sidebar({
+  role,
+  mode,
+  onNavigate,
+}: {
+  role: UserRole
+  mode: AppMode
+  onNavigate?: () => void
+}) {
   const pathname = usePathname()
 
   return (
@@ -24,7 +33,9 @@ export function Sidebar({ role, onNavigate }: { role: UserRole; onNavigate?: () 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
         {NAV_SECTIONS.map((section) => {
           const visible = section.items.filter(
-            (item) => !item.minimumRole || ROLE_RANK[role] >= ROLE_RANK[item.minimumRole],
+            (item) =>
+              (!item.minimumRole || ROLE_RANK[role] >= ROLE_RANK[item.minimumRole]) &&
+              (!item.demoOnly || mode === 'DEMO'),
           )
           if (visible.length === 0) return null
 

@@ -281,6 +281,52 @@ if ((await selfTest.count()) === 0) {
   }
 }
 
+// --- offline and sync ----------------------------------------------------
+// The mobile contract, demonstrated from the web: queue while disconnected,
+// push as one batch, get a verdict per row. Driven for real, including the
+// negative-stock flag, because that is the beat most likely to be shown to
+// somebody and the one with the most moving parts.
+{
+  await visit('/demo/handset')
+
+  current = 'handset · queue offline'
+  const record = page.getByRole('button', { name: /^record$/i }).first()
+
+  if ((await record.count()) === 0) {
+    failures.push({ page: '/demo/handset', kind: 'missing', text: 'no way to record' })
+  } else {
+    // One receipt, and one issue far larger than anything on hand — the second
+    // must come back FLAGGED rather than rejected, because it is work somebody
+    // physically did (WADR-007).
+    await record.click()
+
+    await page.locator('#type').selectOption('ISSUE')
+    await page.fill('#quantity', '99999')
+    await record.click()
+
+    await page.getByText(/2 pending/i).first().waitFor({ timeout: 10_000 })
+    console.log('  ✓     handset · 2 movements queued while offline')
+
+    current = 'handset · sync'
+    await page.getByRole('button', { name: /switch the network on/i }).click()
+    await page.getByRole('button', { name: /^sync 2 movements$/i }).click()
+
+    await page.getByText(/what the server said/i).first().waitFor({ timeout: 30_000 })
+
+    const accepted = await page.getByText(/^accepted$/i).count()
+    const flagged = await page.getByText(/^flagged$/i).count()
+
+    if (accepted < 1 || flagged < 1) {
+      failures.push({
+        page: '/demo/handset',
+        kind: 'sync',
+        text: `expected an accepted row and a flagged row; got ${accepted} accepted, ${flagged} flagged`,
+      })
+    }
+    console.log(`  ✓     handset · synced — ${accepted} accepted, ${flagged} flagged`)
+  }
+}
+
 // --- demo reset ----------------------------------------------------------
 // Clicked for real. This is the one path the integration tests deliberately do
 // not exercise, because running it there would wipe the demo database out from
