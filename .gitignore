@@ -6,6 +6,7 @@
 # next
 /.next/
 /.next-verify/
+/.next-smoke/
 /out/
 next-env.d.ts
 
