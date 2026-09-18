@@ -41,7 +41,7 @@ type Handler<TBody> = (context: ApiContext<TBody>) => Promise<unknown>
 export function apiRoute<TSchema extends z.ZodTypeAny | undefined = undefined>(
   options: RouteOptions<TSchema>,
   handler: Handler<TSchema extends z.ZodTypeAny ? z.infer<TSchema> : undefined>,
-): (request: Request) => Promise<NextResponse> {
+): (request: Request) => Promise<Response> {
   return async (request: Request) => {
     const requestId = randomUUID()
 
@@ -134,6 +134,22 @@ export function apiRoute<TSchema extends z.ZodTypeAny | undefined = undefined>(
         requestId,
         request,
       })
+
+      /**
+       * A handler may return a Response of its own.
+       *
+       * Almost all of them return data and this wraps it as JSON. A report
+       * download cannot: it has to set its own content type and disposition.
+       * Without this branch the Response object itself would be serialised, and
+       * the caller would receive `{}` with a 200 — a download that looks like
+       * it worked and contains nothing.
+       */
+      if (result instanceof Response) {
+        for (const [header, value] of Object.entries(headersFor(requestId, claims.mode))) {
+          if (!result.headers.has(header)) result.headers.set(header, value)
+        }
+        return result
+      }
 
       return NextResponse.json(result ?? { ok: true }, {
         headers: headersFor(requestId, claims.mode),

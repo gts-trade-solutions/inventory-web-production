@@ -538,6 +538,53 @@ console.log('\n=== count lifecycle ===')
   log('stock untouched by rejection', untouched?.quantity === corrected?.quantity)
 }
 
+console.log('\n=== recall pack and maintenance ===')
+{
+  const pulled = await call('/sync/pull', { headers: auth(accessToken) })
+  const batchId = pulled.body.batches?.[0]?.id
+
+  const pack = await call(`/trace/batch/${batchId}`, { headers: auth(accessToken) })
+  log('batch trace still works', pack.status)
+
+  const json = await call(`/reports/recall/${batchId}`, { headers: auth(accessToken) })
+  log('GET /reports/recall/:id', json.status)
+  log('  reconciliation present', typeof json.body?.reconciliation?.balanced === 'boolean')
+  log('  one flat sheet of lines', Array.isArray(json.body?.lines))
+
+  // A download must NOT come back as JSON. The route wrapper serialises
+  // whatever a handler returns, so a Response had to be passed through — and
+  // without that this would be `{}` with a 200: a download that looks like it
+  // worked and contains nothing.
+  const file = await fetch(`${BASE}/reports/recall/${batchId}?format=csv`, {
+    headers: auth(accessToken),
+  })
+  const text = await file.text()
+  log('CSV download', `${file.status} ${file.headers.get('content-type')}`)
+  log('  is a file, not JSON', !text.trimStart().startsWith('{'))
+  log('  names the batch', text.includes('Recall pack for batch'))
+  log('  has a filename', /filename="recall-/.test(file.headers.get('content-disposition') ?? ''))
+
+  const sweepAsOperator = await call('/maintenance/sweep', {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: JSON.stringify({}),
+  })
+  log('operator running the sweep', `${sweepAsOperator.status} ${sweepAsOperator.body?.error?.code}`)
+
+  const admin = await call('/auth/token', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'admin@inventory.local', password: 'demo1234', mode: 'DEMO' }),
+  })
+  const sweep = await call('/maintenance/sweep', {
+    method: 'POST',
+    headers: auth(admin.body.accessToken),
+    body: JSON.stringify({}),
+  })
+  log('POST /maintenance/sweep', sweep.status)
+  log('  drift rows found', sweep.body?.drift?.rows)
+  log('  demo data is clean', sweep.body?.drift?.rows === 0)
+}
+
 console.log('\n=== refresh rotation ===')
 {
   const rotated = await call('/auth/refresh', {
