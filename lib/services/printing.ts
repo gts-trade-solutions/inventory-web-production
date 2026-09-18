@@ -15,6 +15,8 @@ import {
   withRfidEncoding,
   type LabelFields,
 } from '@/lib/labels/zpl'
+import { publishPrint } from '@/lib/events/publish'
+import { modeOf } from '@/lib/mode'
 import { allocateDocNo } from './numbering'
 
 /**
@@ -109,6 +111,17 @@ export async function submitPrintJob(
       error: result.error ?? null,
       sentAt: result.outcome === PrintOutcome.FAILED ? null : new Date(),
     },
+  })
+
+  publishPrint({
+    mode: modeOf(db),
+    siteId: null,
+    docNo,
+    printer: connector.label,
+    simulated: connector.simulated,
+    labels: result.labels,
+    status: statusFor(result),
+    epc: request.epcs?.[0] ?? null,
   })
 
   return {

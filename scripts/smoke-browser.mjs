@@ -237,6 +237,12 @@ const selfTest = page.getByRole('button', { name: /self-test/i }).first()
 if ((await selfTest.count()) === 0) {
   failures.push({ page: '/devices', kind: 'missing', text: 'no self-test button' })
 } else {
+  // The live console must actually receive something. A console that renders
+  // but never updates says "nothing is happening" when the truth is "I am not
+  // listening", which is the failure it exists to prevent.
+  current = 'devices · live console'
+  await page.getByText(/connected|reconnecting/i).first().waitFor({ timeout: 30_000 })
+
   current = 'devices · self-test'
   await selfTest.click()
 
@@ -257,6 +263,20 @@ if ((await selfTest.count()) === 0) {
     })
   }
   console.log(`  ✓     devices · self-test reported ${reported} step(s)`)
+
+  // The self-test publishes a DEVICE event, so the console should show it
+  // without a reload. This is the end-to-end proof that SSE is delivering.
+  current = 'devices · live event'
+  try {
+    await page.getByText(/self-test (passed|failed)/i).first().waitFor({ timeout: 20_000 })
+    console.log('  ✓     devices · live console received the event')
+  } catch {
+    failures.push({
+      page: '/devices',
+      kind: 'stream',
+      text: 'the self-test event never reached the live console',
+    })
+  }
 }
 
 await browser.close()

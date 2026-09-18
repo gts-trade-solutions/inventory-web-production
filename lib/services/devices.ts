@@ -7,6 +7,8 @@ import { SimulatedPrinter } from '@/lib/devices/simulated/printer'
 import { SimulatedRfidReader } from '@/lib/devices/simulated/rfid-reader'
 import { TcpPrinter } from '@/lib/devices/server/tcp-printer'
 import { LlrpReader } from '@/lib/devices/server/llrp-reader'
+import { publishDevice } from '@/lib/events/publish'
+import { modeOf } from '@/lib/mode'
 import { splitAddress } from './printing'
 
 /**
@@ -141,6 +143,16 @@ export async function runSelfTest(db: PrismaClient, deviceId: string): Promise<S
   if (report.ok) {
     await db.device.update({ where: { id: deviceId }, data: { lastSeenAt: new Date() } })
   }
+
+  publishDevice({
+    mode: modeOf(db),
+    siteId: null,
+    device: device.label,
+    detail: report.ok
+      ? 'self-test passed'
+      : `self-test failed at ${report.steps.find((step) => !step.ok)?.name ?? 'an early step'}`,
+    ok: report.ok,
+  })
 
   return report
 }

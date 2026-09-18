@@ -7,7 +7,9 @@ import { PageHeader } from '@/components/page-header'
 import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { signAccessToken } from '@/lib/api/jwt'
 import { SelfTestButton } from './self-test-button'
+import { EventConsole } from './event-console'
 
 export const metadata: Metadata = { title: 'Devices' }
 
@@ -22,6 +24,17 @@ export const metadata: Metadata = { title: 'Devices' }
 export default async function DevicesPage() {
   const user = await requireUser()
   const devices = await listDevices(user.db, { includeRetired: true })
+
+  // A short-lived token for the console's SSE connection. The browser's
+  // EventSource cannot set an Authorization header, and the same endpoint
+  // serves the mobile client, so one auth scheme is better than two.
+  const streamToken = await signAccessToken({
+    userId: user.userId,
+    role: user.role,
+    siteIds: user.siteIds,
+    deviceId: null,
+    mode: user.mode,
+  })
 
   const groups: Array<{ kind: DeviceKind; title: string; blurb: string }> = [
     {
@@ -52,6 +65,10 @@ export default async function DevicesPage() {
         title="Devices"
         description="Every scanner, reader and printer the system knows about — and whether it is working."
       />
+
+      <div className="mb-6">
+        <EventConsole token={streamToken} />
+      </div>
 
       {devices.length === 0 ? (
         <EmptyState

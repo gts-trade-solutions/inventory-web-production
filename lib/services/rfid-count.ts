@@ -5,6 +5,8 @@ import { ApiError, ErrorCode } from '@/lib/api/errors'
 import { SimulatedRfidReader } from '@/lib/devices/simulated/rfid-reader'
 import { LlrpReader } from '@/lib/devices/server/llrp-reader'
 import type { LlrpTagRead } from '@/lib/devices/llrp/protocol'
+import { publishTagReads } from '@/lib/events/publish'
+import { modeOf } from '@/lib/mode'
 import { countedFromSessionTags, recordTagReads } from './counts'
 import { isSimulated } from './devices'
 import { splitAddress } from './printing'
@@ -90,6 +92,17 @@ export async function sweepLocation(
   )
 
   const distinct = new Set(reads.map((read) => read.epc)).size
+
+  publishTagReads({
+    mode: modeOf(db),
+    siteId: session.siteId,
+    sessionId,
+    device: device.label,
+    simulated,
+    distinctTags: distinct,
+    newToSession: outcome.accepted,
+    unknownEpcs: outcome.unknownEpcs,
+  })
   const counted = await describeLines(db, await countedFromSessionTags(db, sessionId))
 
   return {

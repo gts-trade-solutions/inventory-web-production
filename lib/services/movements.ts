@@ -14,6 +14,8 @@ import {
   type SerialUnit,
   type StockLevel,
 } from '@/lib/domain/types'
+import { publishMovement } from '@/lib/events/publish'
+import { modeOf } from '@/lib/mode'
 import { allocateDocNo, docKeyForMovement } from './numbering'
 import { deterministicLockOrder, withDeadlockRetry } from './tx'
 
@@ -54,18 +56,25 @@ export interface RecordMovementInput {
   allowExpiredOverride?: boolean
 }
 
+/** What a live console needs to describe the movement, already in scope. */
+export interface MovementDescription {
+  itemName: string
+  fromCode: string | null
+  toCode: string | null
+}
+
 export type RecordOutcome =
-  | { status: 'RECORDED'; movementId: string; docNo: string }
+  | ({ status: 'RECORDED'; movementId: string; docNo: string } & MovementDescription)
   | { status: 'DUPLICATE'; movementId: string; docNo: string }
   | { status: 'REJECTED'; error: MovementError }
   /** Written, but it drove stock negative. A supervisor now owns it (WADR-007). */
-  | {
+  | ({
       status: 'FLAGGED'
       movementId: string
       docNo: string
       reason: 'NEGATIVE_STOCK'
       details: unknown
-    }
+    } & MovementDescription)
 
 export class MovementRejected extends Error {
   readonly code = 'MOVEMENT_REJECTED'
@@ -90,9 +99,36 @@ export async function recordMovement(
   actor: { userId: string | null },
   options: { acceptNegative?: boolean } = {},
 ): Promise<RecordOutcome> {
-  return withDeadlockRetry(prisma, (tx) => recordMovementInTx(tx, input, actor, options), {
-    label: `record ${input.action.kind}`,
-  })
+  const outcome = await withDeadlockRetry(
+    prisma,
+    (tx) => recordMovementInTx(tx, input, actor, options),
+    { label: `record ${input.action.kind}` },
+  )
+
+  // AFTER the transaction commits, never inside it. A live console announcing a
+  // movement that then rolled back would be reporting something that never
+  // happened — and a deadlock retry would announce it twice.
+  //
+  // `recordMovementInTx` deliberately does not do this: its caller owns the
+  // transaction and we cannot know from in there whether it will commit.
+  if (outcome.status === 'RECORDED' || outcome.status === 'FLAGGED') {
+    publishMovement({
+      mode: modeOf(prisma),
+      siteId: input.siteId,
+      docNo: outcome.docNo,
+      type: input.action.kind,
+      quantity: quantityOf(input.action),
+      itemName: outcome.itemName,
+      from: outcome.fromCode,
+      to: outcome.toCode,
+    })
+  }
+
+  return outcome
+}
+
+function quantityOf(action: StockAction): number {
+  return 'quantity' in action ? action.quantity : action.countedQuantity
 }
 
 /**
@@ -168,7 +204,9 @@ export async function recordMovementInTx(
   const locationIds = locationsTouchedBy(action)
   const locations = await tx.location.findMany({
     where: { id: { in: locationIds }, deletedAt: null },
-    select: { id: true },
+    // The code costs nothing on a query already being made, and saves a second
+    // one to describe the movement afterwards.
+    select: { id: true, code: true },
   })
   const knownLocationIds = new Set(locations.map((location) => location.id))
 
@@ -275,10 +313,11 @@ export async function recordMovementInTx(
         locationId: negative.locationId,
         resultingQuantity: negative.quantity,
       },
+      ...describe(item, action, locations),
     }
   }
 
-  return { status: 'RECORDED', movementId, docNo }
+  return { status: 'RECORDED', movementId, docNo, ...describe(item, action, locations) }
 }
 
 // ---------------------------------------------------------------------------
@@ -507,6 +546,33 @@ function toDomainItem(row: {
     expiryRequired: row.expiryRequired,
     shelfLifeDays: row.shelfLifeDays,
     nearExpiryDays: row.nearExpiryDays,
+  }
+}
+
+/**
+ * The movement in words, from what the transaction already loaded.
+ *
+ * Built here rather than by the caller so a console line never costs an extra
+ * query on the write path — which matters when a phone pushes fifty at once.
+ */
+function describe(
+  item: { name: string },
+  action: StockAction,
+  locations: Array<{ id: string; code: string }>,
+): MovementDescription {
+  const codeOf = (id: string | null | undefined) =>
+    id ? (locations.find((location) => location.id === id)?.code ?? null) : null
+
+  return {
+    itemName: item.name,
+    fromCode: codeOf('fromLocationId' in action ? action.fromLocationId : null),
+    toCode: codeOf(
+      'toLocationId' in action
+        ? action.toLocationId
+        : 'locationId' in action
+          ? action.locationId
+          : null,
+    ),
   }
 }
 

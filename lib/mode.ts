@@ -42,6 +42,23 @@ export function dbFor(mode: AppMode): PrismaClient {
 }
 
 /**
+ * Which mode a client belongs to.
+ *
+ * Services take a `PrismaClient` and deliberately know nothing about modes —
+ * that is what keeps the mode decision at the route boundary. But a service
+ * publishing a live event has to stamp it, or a DEMO event could reach a LIVE
+ * console (WADR-024). Comparing identity against the demo client answers it
+ * without threading a mode parameter through every signature.
+ *
+ * A client from somewhere other than `dbFor` — a test, a script — is treated as
+ * LIVE. That is the safe direction: such an event is then visible only to a
+ * LIVE console, never leaking into one it does not belong to.
+ */
+export function modeOf(db: PrismaClient): AppMode {
+  return db === demoPrisma() ? 'DEMO' : 'LIVE'
+}
+
+/**
  * Guards operations that must never touch live data — `POST /api/v1/demo/reset`
  * above all. There is deliberately no code path from those to `livePrisma()`.
  */
