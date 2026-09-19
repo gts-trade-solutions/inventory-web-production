@@ -99,6 +99,24 @@ console.log('  ✓ signed in\n')
 
 // --- walk the app --------------------------------------------------------
 await visit('/dashboard')
+
+// The demo banner must be PRESENT here. Its absence is checked in the LIVE
+// section at the end, and absence alone proves nothing: a selector that
+// matches no wording in either mode would pass there for the wrong reason.
+// The pair is what makes either assertion mean something.
+{
+  const banner = await page.getByText(/demo mode/i).count()
+  if (banner === 0) {
+    failures.push({
+      page: '/dashboard',
+      kind: 'mode',
+      text: 'a DEMO session is not showing the demo banner',
+    })
+  } else {
+    console.log('  ✓     demo · banner present')
+  }
+}
+
 await visit('/inventory')
 await visit('/batches')
 await visit('/serials')
@@ -1308,6 +1326,79 @@ if ((await selfTest.count()) === 0) {
       .first()
       .textContent()
     console.log(`  ✓     devices · ${note?.trim().slice(0, 60)}`)
+  }
+}
+
+// --- LIVE mode, briefly ---------------------------------------------------
+// Everything above runs in DEMO, which left the LIVE half of the mode
+// guardrails exercised by nothing. This is deliberately light: sign in for
+// real, confirm the app works, and confirm the two modes are actually
+// separate. The guardrails are the point — a demo that leaked into live data,
+// or a live session wearing the demo banner, is the failure that matters.
+{
+  current = 'live · sign in'
+
+  const LIVE_EMAIL = process.env.LIVE_EMAIL ?? 'admin@inventory.local'
+  const LIVE_PASSWORD = process.env.LIVE_PASSWORD ?? 'admin12345'
+
+  await context.clearCookies()
+  await visit('/login', 'live · login')
+
+  // The mode toggle only appears when demo mode is enabled. Choosing Live is
+  // the whole point of this section, so its absence is a failure rather than
+  // something to work around.
+  const liveToggle = page.getByRole('button', { name: /live/i }).first()
+  if ((await liveToggle.count()) === 0) {
+    failures.push({ page: '/login', kind: 'missing', text: 'no Live option on the login screen' })
+  } else {
+    await liveToggle.click()
+    await page.fill('#email', LIVE_EMAIL)
+    await page.fill('#password', LIVE_PASSWORD)
+    await page.getByRole('button', { name: /^sign in$/i }).click()
+
+    try {
+      await page.waitForURL(/dashboard/, { timeout: 30_000 })
+      console.log('  ✓     live · signed in')
+    } catch {
+      failures.push({
+        page: '/login',
+        kind: 'auth',
+        text: `could not sign in to LIVE as ${LIVE_EMAIL} — set LIVE_EMAIL and LIVE_PASSWORD if they differ`,
+      })
+    }
+
+    if (page.url().includes('dashboard')) {
+      // A handful of pages, not the whole walk. Enough to prove LIVE renders.
+      await visit('/inventory', 'live · inventory')
+      await visit('/locations', 'live · locations')
+      await visit('/reports/stock', 'live · stock report')
+
+      // The guardrail. A live session must not be wearing the demo banner,
+      // and must not be offered the reset that wipes the demo database.
+      current = 'live · guardrails'
+      const demoBadge = await page.getByText(/demo mode|simulation/i).count()
+      if (demoBadge > 0) {
+        failures.push({
+          page: 'live',
+          kind: 'mode',
+          text: 'a LIVE session is showing demo-mode wording',
+        })
+      } else {
+        console.log('  ✓     live · no demo wording in a live session')
+      }
+
+      await visit('/devices', 'live · devices')
+      const reset = await page.getByRole('button', { name: /^reset demo data$/i }).count()
+      if (reset > 0) {
+        failures.push({
+          page: 'live · devices',
+          kind: 'mode',
+          text: 'a LIVE session was offered the demo reset',
+        })
+      } else {
+        console.log('  ✓     live · demo reset not offered')
+      }
+    }
   }
 }
 
