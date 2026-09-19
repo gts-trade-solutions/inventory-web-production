@@ -154,6 +154,7 @@ model Site {
   countSessions CountSession[]
   devices       Device[]
   users         UserSite[]
+  putawayRules  PutawayRule[]
 
   @@map("sites")
 }
@@ -171,6 +172,7 @@ model Category {
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
   children Category[] @relation("CategoryTree")
   items    Item[]
+  putawayRules PutawayRule[]
 
   @@unique([name, parentId])
   @@index([parentId])
@@ -191,6 +193,23 @@ model Item {
 
   reorderPoint Int  @default(0)
   maxLevel     Int?
+
+  /// Physical size and weight of ONE unit of issue — one `unit`, whatever that
+  /// is for this item. A case of 24 is 24 of these, near enough for capacity.
+  ///
+  /// All nullable, and nullable is the normal state: measuring every SKU is
+  /// real warehouse work, not a data-entry afterthought. Anything computed
+  /// from these reports UNKNOWN when they are missing rather than guessing,
+  /// because a confident wrong cube sends somebody to a bay the goods do not
+  /// fit in, and they stop trusting the system within a week.
+  ///
+  /// Millimetres and grams: integers, so no floating-point drift accumulates
+  /// across a bay of ten thousand units. Volume is DERIVED from the three
+  /// dimensions and never stored, so the two can never disagree.
+  weightGrams Int?
+  lengthMm    Int?
+  widthMm     Int?
+  heightMm    Int?
 
   /// NONE | BATCH | SERIAL — see TrackingMode.
   trackingMode TrackingMode @default(NONE)
@@ -277,6 +296,16 @@ model Location {
   /// the failure this whole design exists to avoid.
   capacityUnits Int?
 
+  /// Physical limits, for warehouses that have measured their stock.
+  ///
+  /// Only meaningful once the items in a place carry dimensions and weight, so
+  /// a fill computed from these reports how much of the stock it could actually
+  /// account for. A bay where half the SKUs are unmeasured gives a volume
+  /// figure that is an UNDERCOUNT, and saying "60% full, 4 of 9 items measured"
+  /// is honest where a bare "60%" is not.
+  capacityVolumeCm3  Int?
+  capacityWeightGrams Int?
+
   createdAt DateTime  @default(now()) @db.DateTime(3)
   updatedAt DateTime  @updatedAt @db.DateTime(3)
   deletedAt DateTime? @db.DateTime(3)
@@ -290,6 +319,7 @@ model Location {
   countSessions CountSession[]
   serialUnits   SerialUnit[]
   printJobs     PrintJob[]
+  putawayRules  PutawayRule[]
 
   @@unique([siteId, code])
   @@index([updatedAt])
@@ -831,6 +861,43 @@ model AuditLog {
   @@index([actorUserId])
   @@index([at])
   @@map("audit_log")
+}
+
+/// Where a receipt should go, when nobody has said.
+///
+/// Rules are advisory: they produce a SUGGESTION on the receive form, which the
+/// operator accepts or ignores. Nothing here refuses a movement — the operator
+/// can see the shelf and the system cannot.
+///
+/// Matched most specific first, by `priority` ascending. A rule with no
+/// category and no tracking mode matches everything, which is how a catch-all
+/// is written.
+model PutawayRule {
+  id       String @id @db.Char(36)
+  siteId   String @db.Char(36)
+  /// Lower runs first. Ties break on the narrower rule.
+  priority Int    @default(100)
+
+  /// Narrowing conditions. NULL means "any".
+  categoryId   String?       @db.Char(36)
+  trackingMode TrackingMode?
+
+  /// Where it points. A specific location wins; otherwise any leaf in the zone.
+  targetLocationId String?       @db.Char(36)
+  targetZone       LocationZone?
+
+  active Boolean @default(true)
+  note   String? @db.VarChar(200)
+
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+
+  site           Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  category       Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  targetLocation Location? @relation(fields: [targetLocationId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, active, priority])
+  @@map("putaway_rules")
 }
 
 /// For the ERP integration and any external system (ARCHITECTURE §4.2).

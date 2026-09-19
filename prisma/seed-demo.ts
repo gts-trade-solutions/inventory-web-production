@@ -130,6 +130,30 @@ const LOCATIONS: Array<{
   { code: 'DSP', name: 'Dispatch bay', zone: LocationZone.OUTBOUND, capacityUnits: 200 },
 ]
 
+/**
+ * Dimensions, for SOME items only.
+ *
+ * Deliberately not all of them. Measuring every SKU is real warehouse work that
+ * no demo should pretend is already done, and the interesting behaviour is what
+ * the system says when it does NOT know: a fill figure marked as partial, a
+ * putaway suggestion that declines to guess. A demo where everything is
+ * measured only ever shows the easy half.
+ *
+ * Millimetres and grams, describing one unit of issue.
+ */
+const MEASURED: Record<
+  string,
+  { lengthMm: number; widthMm: number; heightMm: number; weightGrams: number }
+> = {
+  // The boxes, whose dimensions are literally in their names.
+  'PKG-0001': { lengthMm: 300, widthMm: 200, heightMm: 150, weightGrams: 180 },
+  'PKG-0002': { lengthMm: 450, widthMm: 350, heightMm: 250, weightGrams: 420 },
+  'PKG-0004': { lengthMm: 60, widthMm: 60, heightMm: 50, weightGrams: 95 },
+  'SAF-0007': { lengthMm: 290, widthMm: 230, heightMm: 160, weightGrams: 380 },
+  'SAF-0009': { lengthMm: 240, widthMm: 120, heightMm: 70, weightGrams: 520 },
+  'CHM-0016': { lengthMm: 190, widthMm: 190, heightMm: 300, weightGrams: 5400 },
+}
+
 interface Product {
   sku: string
   name: string
@@ -494,6 +518,40 @@ async function main() {
     categories.set(name, created.id)
   }
 
+  /**
+   * Putaway rules, and a physical capacity on one rack.
+   *
+   * Three states worth showing: a narrow rule that fires for one category, a
+   * catch-all behind it, and a rack with a real volume limit so a cube-based
+   * suggestion can be demonstrated. A-01 keeps only its unit capacity, so the
+   * two kinds of answer sit side by side.
+   */
+  await prisma.location.update({
+    where: { id: locations.get('B-01')! },
+    // 1.2 m³ and 400 kg — a pallet bay.
+    data: { capacityVolumeCm3: 1_200_000, capacityWeightGrams: 400_000 },
+  })
+
+  await prisma.putawayRule.createMany({
+    data: [
+      {
+        id: randomUUID(),
+        siteId: site.id,
+        priority: 10,
+        categoryId: categories.get('Chemicals')!,
+        targetLocationId: locations.get('B-01')!,
+        note: 'Chemicals go to B-01, away from the walkway',
+      },
+      {
+        id: randomUUID(),
+        siteId: site.id,
+        priority: 100,
+        targetZone: LocationZone.STORAGE,
+        note: 'Everything else goes to storage',
+      },
+    ],
+  })
+
   const storage = ['A-01', 'A-02', 'B-01', 'B-02']
   let sequence = 0
   let movements = 0
@@ -525,6 +583,7 @@ async function main() {
         trackingMode: product.tracking,
         expiryRequired: product.expiryRequired ?? false,
         shelfLifeDays: product.shelfLifeDays ?? null,
+        ...(MEASURED[product.sku] ?? {}),
       },
     })
 

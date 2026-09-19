@@ -5,6 +5,7 @@ import { useFormStatus } from 'react-dom'
 import Link from 'next/link'
 import { AlertCircle, CheckCircle2, Loader2, Sparkles } from 'lucide-react'
 import { recordMovementAction, type MovementFormState } from '../actions'
+import type { PutawayAdvice } from '@/lib/services/putaway'
 import type { MovementFormData } from '@/lib/services/movement-form'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -23,15 +24,22 @@ export function MovementForm({
   kind,
   data,
   siteId,
+  putaway,
   isSupervisor,
 }: {
   kind: MovementKind
   data: MovementFormData
   siteId: string
+  /** Where to put it, for a receipt. Advisory — null when there is nothing to say. */
+  putaway: PutawayAdvice | null
   isSupervisor: boolean
 }) {
   const [state, formAction] = useActionState<MovementFormState, FormData>(recordMovementAction, {})
 
+  // Pre-selected from the suggestion, and freely changeable. A suggestion that
+  // cannot be overridden is a decision, and this is not one — the operator can
+  // see the shelf.
+  const [toLocationId, setToLocationId] = useState(putaway?.suggestion?.locationId ?? '')
   const [fromLocationId, setFromLocationId] = useState('')
   const [batchId, setBatchId] = useState(data.proposedBatchId ?? '')
   const [selectedSerials, setSelectedSerials] = useState<string[]>([])
@@ -85,17 +93,22 @@ export function MovementForm({
       )}
 
       {NEEDS_DESTINATION.includes(kind) && (
-        <LocationField
-          id="toLocationId"
-          label="To"
-          locations={data.locations}
-          onHand={data.onHandByLocation}
-          totalOnHand={data.totalOnHandByLocation}
-          unit={item.unit}
-          // Fill matters where stock is going IN. It is noise on the way out.
-          showFill
-          error={state.fieldErrors?.toLocationId}
-        />
+        <div className="space-y-2">
+          <LocationField
+            id="toLocationId"
+            label="To"
+            locations={data.locations}
+            onHand={data.onHandByLocation}
+            totalOnHand={data.totalOnHandByLocation}
+            unit={item.unit}
+            value={toLocationId}
+            onChange={setToLocationId}
+            // Fill matters where stock is going IN. It is noise on the way out.
+            showFill
+            error={state.fieldErrors?.toLocationId}
+          />
+          {putaway && <PutawayHint advice={putaway} chosen={toLocationId} />}
+        </div>
       )}
 
       {kind === 'ADJUST' && (
@@ -619,5 +632,45 @@ function Submit({ kind }: { kind: MovementKind }) {
       {pending && <Loader2 className="animate-spin" />}
       {pending ? 'Recording…' : label}
     </Button>
+  )
+}
+
+/**
+ * Where the system thinks this should go, and why.
+ *
+ * Always says something. A suggestion with no reason is a number to distrust,
+ * and silence when there is no suggestion reads as the feature being broken —
+ * so "no rule covers this item" is printed rather than nothing.
+ *
+ * It goes quiet once the operator picks somewhere else. They have seen the
+ * advice and decided; repeating it is nagging, and nagging is how people learn
+ * to ignore a panel.
+ */
+function PutawayHint({ advice, chosen }: { advice: PutawayAdvice; chosen: string }) {
+  const { suggestion } = advice
+
+  if (!suggestion) {
+    return advice.because ? <p className="text-xs text-muted-foreground">{advice.because}</p> : null
+  }
+
+  if (chosen && chosen !== suggestion.locationId) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Suggested {suggestion.code} — {suggestion.reason.toLowerCase()}.
+      </p>
+    )
+  }
+
+  return (
+    <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <Sparkles className="size-3 text-ok" />
+      <span>
+        <span className="font-medium text-foreground">{suggestion.code}</span> suggested ·{' '}
+        {suggestion.reason}
+        {/* Only when it can be known. An unmeasured bay says nothing rather
+            than implying it is empty. */}
+        {suggestion.fillAfterPercent !== null && ` · ${suggestion.fillAfterPercent}% full after`}
+      </span>
+    </p>
   )
 }

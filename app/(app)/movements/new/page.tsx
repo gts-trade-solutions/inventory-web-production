@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation'
 import { UserRole } from '@prisma/client'
 import { ArrowLeft } from 'lucide-react'
 import { requireUser, roleAtLeast } from '@/lib/auth/guards'
+import { suggestPutaway } from '@/lib/services/putaway'
 import { loadMovementForm } from '@/lib/services/movement-form'
 import { MovementForm, type MovementKind } from './movement-form'
 import { PageHeader } from '@/components/page-header'
@@ -41,6 +42,24 @@ export default async function NewMovementPage({
     quantity: params.qty ? Number(params.qty) : undefined,
   })
   if (!data) notFound()
+
+  /**
+   * Where to put it, for a receipt only.
+   *
+   * Advisory: it names a location and says why, and the operator accepts or
+   * ignores it. Not computed for an issue or a move — "where should this go"
+   * has no meaning when the destination is the thing being emptied, and a
+   * suggestion in the wrong place is noise that teaches people to ignore the
+   * right ones.
+   */
+  const putaway =
+    kind === 'RECEIVE'
+      ? await suggestPutaway(user.db, {
+          itemId: data.item.id,
+          siteId,
+          quantity: params.qty ? Number(params.qty) : 1,
+        })
+      : null
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -80,6 +99,7 @@ export default async function NewMovementPage({
             kind={kind}
             data={data}
             siteId={siteId}
+            putaway={putaway}
             isSupervisor={roleAtLeast(user.role, UserRole.SUPERVISOR)}
           />
         </CardContent>

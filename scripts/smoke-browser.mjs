@@ -444,6 +444,36 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
   }
 }
 
+// --- putaway suggestion on a receipt --------------------------------------
+// Advisory, so what matters is that it appears, names somewhere, and says why.
+// A suggestion with no reason is a number nobody trusts.
+{
+  current = 'movements · putaway'
+  await visit('/inventory?tracking=batch', 'inventory · batch-tracked for putaway')
+
+  const chemHref = await firstRecordHref('/inventory/')
+  if (chemHref) {
+    const chemId = chemHref.split('/').pop()
+    await visit(`/movements/new?item=${chemId}&kind=receive&qty=4`, 'movement form · receive')
+
+    const hint = await page
+      .getByText(/suggested|no putaway rule|already tight/i)
+      .first()
+      .textContent()
+      .catch(() => null)
+
+    if (!hint) {
+      failures.push({
+        page: 'movement form · receive',
+        kind: 'putaway',
+        text: 'the receive form said nothing at all about where to put it',
+      })
+    } else {
+      console.log(`  ✓     movements · putaway — ${hint.trim().slice(0, 70)}`)
+    }
+  }
+}
+
 // --- an RFID cycle count, start to finish --------------------------------
 // The flagship workflow. Driven end to end because every piece works in
 // isolation and the question that matters is whether they work together.
