@@ -38,6 +38,10 @@ const EXEMPT = new Map([
     'deliberately public: reachability, checked before any session exists',
   ],
   [
+    'app/api/v1/health/ready/route.ts',
+    'deliberately public: a readiness probe runs before any session exists, and it discloses only whether the database answered',
+  ],
+  [
     'app/api/v1/stream/route.ts',
     'verifies the bearer token itself, because SSE cannot use the JSON wrapper',
   ],

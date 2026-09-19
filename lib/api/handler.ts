@@ -8,6 +8,7 @@ import { dbFor, type AppMode } from '@/lib/mode'
 import { roleAtLeast } from '@/lib/auth/guards'
 import { bearerFrom, verifyAccessToken, type AccessClaims } from './jwt'
 import { ErrorCode, apiError, fromZodError, toApiError, type ApiErrorBody } from './errors'
+import { report } from '@/lib/log'
 import { RULES, addressOf, limiter, rateLimitHeaders, type RateLimitRule } from './rate-limit'
 
 /**
@@ -189,8 +190,15 @@ export function apiRoute<TSchema extends z.ZodTypeAny | undefined = undefined>(
       const { body, status, logged } = toApiError(thrown, requestId)
 
       if (logged) {
-        // The detail stays server-side; the caller gets an id to quote.
-        console.error(`[api ${requestId}]`, logged)
+        // The detail stays server-side; the caller gets an id to quote. One
+        // structured line, so "show me everything for request abc123" is a
+        // query rather than a grep through prose.
+        report('api.failed', logged, {
+          requestId,
+          method: request.method,
+          path: new URL(request.url).pathname,
+          code: body.error.code,
+        })
       }
 
       return fail(body, status, requestId)
@@ -245,7 +253,7 @@ export function publicRoute<TSchema extends z.ZodTypeAny | undefined = undefined
       return NextResponse.json(result ?? { ok: true }, { headers: { 'X-Request-Id': requestId } })
     } catch (thrown) {
       const { body, status, logged } = toApiError(thrown, requestId)
-      if (logged) console.error(`[api ${requestId}]`, logged)
+      if (logged) report('api.failed', logged, { requestId, path: new URL(request.url).pathname })
       return fail(body, status, requestId)
     }
   }

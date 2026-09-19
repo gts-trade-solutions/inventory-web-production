@@ -248,12 +248,63 @@ instantiated once per bundle in production and once per process in development.
 | Demo data looks wrong                       | Admin → Settings → Reset demo. It reseeds `inventory_demo` and touches nothing else.                                           |
 | A migration failed halfway                  | Restore the backup into a scratch database first and look at it there. Do not run `migrate dev` against production.            |
 
-Logs go to stdout. Run it under something that captures them — systemd, pm2, a Windows service wrapper — rather
-than a terminal somebody eventually closes.
+## 9. Monitoring
+
+### Two health endpoints, which answer different questions
+
+| Endpoint                | Asks                              | Touches the database | Point it at                     |
+| ----------------------- | --------------------------------- | -------------------- | ------------------------------- |
+| `GET /api/v1/health`    | Is the web tier up?               | **No**               | Uptime monitoring, and the phone's "am I offline" check |
+| `GET /api/v1/health/ready` | Would a real request work?      | Yes — `SELECT 1`     | Load balancer / container readiness probe |
+
+Keep them apart. Liveness must not touch the database: a check that goes red whenever MySQL is briefly busy
+teaches people to ignore it. Readiness must, because that is the question it exists to answer.
+
+Conflating them is how a load balancer pulls every instance out of rotation during a thirty-second database
+blip and turns a slow minute into an outage.
+
+Readiness answers **503** when the database is unreachable, not 500 — "come back shortly" rather than "the
+application is broken", which is the difference between a retry and somebody being woken up. Verified by
+pointing an instance at a dead port: liveness stayed 200, readiness returned 503 in about two seconds.
+
+### Logs
+
+One JSON object per line, on stdout:
+
+```json
+{"level":"error","event":"health.notReady","at":"2026-09-19T12:06:19.440Z","ms":2070,"error":"Can't reach database server"}
+```
+
+`event` is a stable slug rather than a sentence, so the wording can be improved without breaking the query that
+counts them. Every API failure carries the same `requestId` the caller was given — so "it failed at about ten
+past three" becomes `event="api.failed" requestId="…"` rather than a grep through prose.
+
+Fields named `password`, `token`, `secret`, `authorization` and similar are redacted at any depth before a line
+is written, because a log is the copy that ends up in a third-party search index.
+
+Run the process under something that captures stdout — systemd, pm2, a Windows service wrapper — rather than a
+terminal somebody eventually closes.
+
+### Error reporting
+
+`report()` in `lib/log.ts` is the single seam every unexpected error goes through. **Sentry is not wired**: it
+is a two-line change there (`@sentry/nextjs`, a `SENTRY_DSN`, and the commented `captureException` call), left
+undone deliberately because an SDK that cannot be exercised without a DSN is a control nobody has watched work.
+The structured logging above is real and is what to read in the meantime.
+
+### What to alert on
+
+| Signal                                       | Where it comes from                        |
+| -------------------------------------------- | ------------------------------------------ |
+| `npm run sweep` exits non-zero               | Projection drift — see §5                  |
+| `/api/v1/health/ready` returns 503           | Database unreachable from the web tier     |
+| `event="api.failed"` rate climbing           | Something is throwing that should not be   |
+| `event="print.failed"`                       | A printer stopped accepting jobs           |
+
 
 ---
 
-## 9. Hardware
+## 10. Hardware
 
 The Zebra connectors are written against the real protocols and tested against protocol-level simulators. Until
 hardware arrives, devices registered in the app run through those simulators. The bring-up checklist — what to
