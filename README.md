@@ -30,6 +30,9 @@ runs on. One product, one database, one set of rules, two clients.
 | [docs/DEVICE_INTEGRATION.md](docs/DEVICE_INTEGRATION.md) | Zebra hardware, how a browser reaches it, and **how the connectors are built and tested with no hardware** |
 | [docs/DEMO_MODE.md](docs/DEMO_MODE.md)                   | Running the whole product on a demo database with simulated devices                                        |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md)                 | Deploying it, the scheduled jobs, backups, and the restore drill that proves they work                     |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md)                 | For the floor: scanning, receiving, issuing, counting, printing                                            |
+| [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)               | For administrators: setting a site up, tracking modes, recalls, reports, keeping it honest                 |
+| [docs/DEVICE_SETUP.md](docs/DEVICE_SETUP.md)             | Setup sheets for scanners, printers and fixed RFID readers                                                 |
 
 ## What v1 includes
 
