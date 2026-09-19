@@ -385,17 +385,24 @@ _Exit:_ the business can get its data in and out, and can answer a recall questi
 ### Phase 9 · Hardening & launch — _~2 weeks_
 
 - **9.1** Performance pass: query plans on the ledger, item list and traceability queries; index verification;
-  seed 500k movements and 100k serial units
+  seed 500k movements and 100k serial units — **deferred by decision, 2026-09-19**
+  - Not done, and nothing here has been measured at scale. Keyset pagination, the streaming exports and the
+    lock ordering were all DESIGNED for it and none has been observed under load. Treat every performance
+    claim in this codebase as reasoning rather than evidence until this runs.
 - **9.2** Security pass: role enforcement, **mode isolation**, rate limits, input validation, dependency audit,
   secret review, HTTPS
 - **9.3** Backups: automated daily dump of live **plus a documented, executed restore drill**
 - **9.4** Observability: Sentry, structured logs, health checks, alerts on sync, print and drift failures
+  - Structured JSON logging, a liveness endpoint and a separate readiness probe that verifies the database,
+    all exercised. Alerting signals listed in OPERATIONS §9.
+  - **Sentry is not wired.**  in `lib/log.ts` is the one seam and the capture call sits there
+    commented. An SDK that cannot be exercised without a DSN would be a control nobody has watched work.
 - **9.5** Playwright coverage: login, scan, batch receipt, FEFO issue, serial issue, count approval, print,
   recall, export — in both modes
 - **9.6** Deployment runbook, environment setup, network prerequisites, rollback procedure
 - **9.7** User guides: User access, Admin access, scanner and printer setup sheets, demo runbook
 - **9.8** Production deploy, real master data loaded, tracking modes set, opening balances and batches entered,
-  go-live checklist
+  go-live checklist — **yours to run**; the runbook is OPERATIONS §4
 
 _Exit:_ live, with a tested restore and a runbook someone else can follow.
 
