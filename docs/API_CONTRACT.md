@@ -324,6 +324,27 @@ Each row is judged independently, so a single bad row never blocks the batch:
 Only `REJECTED` needs a human at the client. `FLAGGED` is deliberate policy: an offline client cannot know
 another device already issued the stock, and rejecting the row would discard work already done on the floor.
 
+**Site scope is enforced on the way in.** Each movement carries its own `siteId` — a phone records which
+warehouse it was standing in — and that value is checked against the signed token rather than trusted. Two
+rejections come from this, both per row, so one bad movement never blocks the rest of an outbox:
+
+| Code                  | Status | When                                                                               |
+| --------------------- | ------ | ---------------------------------------------------------------------------------- |
+| `SITE_NOT_ALLOWED`    | 403    | The `siteId` is not one this token carries in its `siteIds` claim                  |
+| `LOCATION_WRONG_SITE` | 422    | A `fromLocationId` or `toLocationId` exists but belongs to a **different site**     |
+
+> **Changed.** Both are new. Previously `siteId` was taken from the body unchecked and the locations were never
+> compared against it, so a client could record work at any site and could move stock between two warehouses in
+> a single movement — with the ledger recording it as having happened entirely in one of them. A client that
+> only ever sends its own site and its own locations sees no difference.
+
+`LOCATION_WRONG_SITE` is deliberately distinct from `UNKNOWN_LOCATION`. "Does not exist" sends somebody
+looking for a missing record; the rack is real and is in another building, which is a different thing to fix.
+
+**Moving stock between sites is not supported.** A movement happens at one site. A transfer between two is two
+movements — an issue from one, a receipt into the other — and until that is modelled properly there is nothing
+tying the pair together.
+
 **`SERIAL_CONFLICT` is the exception worth understanding.** Two devices issuing the same physical unit is not an
 arithmetic disagreement — it is impossible, so one of the two operators is wrong about what they were holding.
 Both movements are recorded, the later one is flagged, and the unit is quarantined pending a supervisor

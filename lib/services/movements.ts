@@ -4,7 +4,12 @@ import { MovementSource, SerialStatus } from '@prisma/client'
 // Type-only, so it cannot construct a client and bypass the mode resolver.
 import type { PrismaClient } from '@prisma/client'
 import type { Db } from '@/lib/db'
-import { planMovement, type MovementError, type StockAction } from '@/lib/domain/movement'
+import {
+  MovementErrorCode,
+  planMovement,
+  type MovementError,
+  type StockAction,
+} from '@/lib/domain/movement'
 import { resolveNewBatch, type NewBatchInput } from '@/lib/domain/batch'
 import {
   NO_BATCH,
@@ -206,9 +211,39 @@ export async function recordMovementInTx(
   const locations = await tx.location.findMany({
     where: { id: { in: locationIds }, deletedAt: null },
     // The code costs nothing on a query already being made, and saves a second
-    // one to describe the movement afterwards.
-    select: { id: true, code: true },
+    // one to describe the movement afterwards. siteId is here for the check
+    // immediately below.
+    select: { id: true, code: true, siteId: true },
   })
+
+  /**
+   * Every location must belong to the movement's own site.
+   *
+   * Without this, a caller supplying its own `siteId` — which the sync push
+   * endpoint does, straight from the client — could move stock between two
+   * warehouses while the ledger recorded it all happening in one. Both sites'
+   * totals would then be wrong, and every report split by site would disagree
+   * with the ledger it was derived from.
+   *
+   * Checked HERE rather than at the API boundary because this is the single
+   * write path: the web form, the sync push and the CSV import all arrive
+   * through it. A check at one entrance is a check the other two do not have.
+   *
+   * The web form never trips this — it only offers locations from the user's
+   * own site — which is exactly why the gap survived so long.
+   */
+  const foreign = locations.filter((location) => location.siteId !== input.siteId)
+  if (foreign.length > 0) {
+    return {
+      status: 'REJECTED',
+      error: {
+        code: MovementErrorCode.LOCATION_WRONG_SITE,
+        message: `${foreign.map((location) => location.code).join(', ')} ${foreign.length === 1 ? 'belongs' : 'belong'} to a different site. Stock cannot be moved between sites in one movement.`,
+        details: { locationIds: foreign.map((location) => location.id) },
+      },
+    }
+  }
+
   const knownLocationIds = new Set(locations.map((location) => location.id))
 
   // --- 1. Lock the stock rows -------------------------------------------

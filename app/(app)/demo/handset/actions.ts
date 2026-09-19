@@ -69,6 +69,10 @@ export async function syncOutboxAction(rows: unknown): Promise<SyncOutcome> {
     const outcome = await push(user.db, movements, {
       userId: user.userId,
       deviceId: null,
+      // The simulated handset is held to the same site scope as a real one.
+      // A demo that skipped the check would be demonstrating a path the
+      // product does not have.
+      siteIds: user.siteIds,
     })
     return outcome
   } catch (error) {

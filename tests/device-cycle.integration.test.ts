@@ -25,7 +25,7 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 
-const actor = () => ({ userId: wh.userId, deviceId: null })
+const actor = () => ({ userId: wh.userId, deviceId: null, siteIds: [wh.siteId] })
 
 /** Movements timestamped in sequence, the way a client's outbox orders them. */
 function outbox(base: Date) {

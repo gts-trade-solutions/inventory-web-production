@@ -444,11 +444,36 @@ export type PushResult =
 export async function push(
   db: PrismaClient,
   movements: readonly PushMovement[],
-  actor: { userId: string; deviceId: string | null },
+  actor: { userId: string; deviceId: string | null; siteIds: readonly string[] },
 ): Promise<{ results: PushResult[]; serverTime: string }> {
   const results: PushResult[] = []
+  const allowedSites = new Set(actor.siteIds)
 
   for (const movement of movements) {
+    /**
+     * The site is supplied BY THE CLIENT, so it has to be checked against the
+     * token rather than trusted.
+     *
+     * Without this a device could record work against any warehouse in the
+     * business, including ones its operator has no access to — and site scope
+     * is the only thing separating them. It was enforced on every read and on
+     * nothing that writes.
+     *
+     * Refused per row rather than for the whole batch, like every other
+     * verdict here: one bad row must never block a phone's outbox.
+     */
+    if (!allowedSites.has(movement.siteId)) {
+      results.push({
+        id: movement.id,
+        status: 'REJECTED',
+        error: {
+          code: 'SITE_NOT_ALLOWED',
+          message: 'This device is not allowed to record work at that site.',
+        },
+      })
+      continue
+    }
+
     try {
       const outcome = await recordMovement(
         db,

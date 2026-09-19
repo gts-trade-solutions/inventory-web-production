@@ -23,7 +23,7 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 
-const actor = () => ({ userId: wh.userId, deviceId: null })
+const actor = () => ({ userId: wh.userId, deviceId: null, siteIds: [wh.siteId] })
 
 const movement = (
   overrides: Partial<PushMovement> & { type: PushMovement['type'] },

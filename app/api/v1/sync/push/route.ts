@@ -27,5 +27,11 @@ const schema = z.object({
 })
 
 export const POST = apiRoute({ schema }, async ({ db, body, claims }) =>
-  push(db, body.movements, { userId: claims.userId, deviceId: claims.deviceId }),
+  // siteIds comes from the SIGNED token, never from the body. Each movement
+  // names its own site and is checked against this before it is recorded.
+  push(db, body.movements, {
+    userId: claims.userId,
+    deviceId: claims.deviceId,
+    siteIds: claims.siteIds,
+  }),
 )

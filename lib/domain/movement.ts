@@ -144,6 +144,14 @@ export const MovementErrorCode = {
   SERIAL_ALREADY_ISSUED: 'SERIAL_ALREADY_ISSUED',
   /** Beyond the per-adjustment cap an administrator set (Settings). */
   ADJUSTMENT_TOO_LARGE: 'ADJUSTMENT_TOO_LARGE',
+  /**
+   * The location exists, but belongs to a different site than the movement.
+   *
+   * Distinct from UNKNOWN_LOCATION on purpose. "Does not exist" sends somebody
+   * looking for a missing record; the real answer is that the rack is real and
+   * is in another warehouse, which is a different thing to go and fix.
+   */
+  LOCATION_WRONG_SITE: 'LOCATION_WRONG_SITE',
 } as const
 export type MovementErrorCode = (typeof MovementErrorCode)[keyof typeof MovementErrorCode]
 
