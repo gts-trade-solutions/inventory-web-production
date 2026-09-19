@@ -20,16 +20,18 @@ import { DOC_PREFIXES, type DocKey } from '@/lib/services/numbering'
  */
 
 export interface MasterDataState {
+  /** When this result was produced, so the newest one wins the notice. */
+  at?: number
   error?: string
   message?: string
 }
 
 /** Service errors carry a message written for the person reading the screen. */
 function explain(error: unknown, fallback: string): MasterDataState {
-  if (error instanceof ApiError) return { error: error.message }
+  if (error instanceof ApiError) return { error: error.message, at: Date.now() }
 
   console.error(error)
-  return { error: fallback }
+  return { error: fallback, at: Date.now() }
 }
 
 // --- Categories ------------------------------------------------------------
@@ -49,7 +51,8 @@ export async function createCategoryAction(
     name: formData.get('name'),
     parentId: emptyToNull(formData.get('parentId')),
   })
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the form.' }
+  if (!parsed.success)
+    return { error: parsed.error.issues[0]?.message ?? 'Check the form.', at: Date.now() }
 
   try {
     await createCategory(user.db, parsed.data, { userId: user.userId })
@@ -58,7 +61,7 @@ export async function createCategoryAction(
   }
 
   revalidatePath('/admin/master-data')
-  return { message: `${parsed.data.name} added.` }
+  return { message: `${parsed.data.name} added.`, at: Date.now() }
 }
 
 export async function updateCategoryAction(
@@ -68,7 +71,7 @@ export async function updateCategoryAction(
   const user = await requireRole(UserRole.ADMIN)
 
   const id = String(formData.get('id') ?? '')
-  if (!id) return { error: 'That category does not exist.' }
+  if (!id) return { error: 'That category does not exist.', at: Date.now() }
 
   // Only the fields the submitted form actually carried. Sending `undefined`
   // for the rest is what lets one small form edit a name without also
@@ -95,7 +98,7 @@ export async function deleteCategoryAction(
   const user = await requireRole(UserRole.ADMIN)
 
   const id = String(formData.get('id') ?? '')
-  if (!id) return { error: 'That category does not exist.' }
+  if (!id) return { error: 'That category does not exist.', at: Date.now() }
 
   try {
     await deleteCategory(user.db, id, { userId: user.userId })
@@ -121,12 +124,13 @@ export async function createSiteAction(
   const user = await requireRole(UserRole.ADMIN)
 
   const parsed = siteSchema.safeParse({ code: formData.get('code'), name: formData.get('name') })
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the form.' }
+  if (!parsed.success)
+    return { error: parsed.error.issues[0]?.message ?? 'Check the form.', at: Date.now() }
 
   try {
     const site = await createSite(user.db, parsed.data, { userId: user.userId })
     revalidatePath('/admin/master-data')
-    return { message: `${site.code} added.` }
+    return { message: `${site.code} added.`, at: Date.now() }
   } catch (error) {
     return explain(error, 'The site could not be created.')
   }
@@ -139,7 +143,7 @@ export async function updateSiteAction(
   const user = await requireRole(UserRole.ADMIN)
 
   const id = String(formData.get('id') ?? '')
-  if (!id) return { error: 'That site does not exist.' }
+  if (!id) return { error: 'That site does not exist.', at: Date.now() }
 
   const changes: Parameters<typeof updateSite>[2] = {}
   if (formData.has('code')) changes.code = String(formData.get('code') ?? '')
@@ -181,14 +185,15 @@ export async function updateSequenceAction(
     nextValue: formData.get('nextValue'),
     padding: formData.get('padding'),
   })
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the form.' }
+  if (!parsed.success)
+    return { error: parsed.error.issues[0]?.message ?? 'Check the form.', at: Date.now() }
 
   const { key, period, ...changes } = parsed.data
 
   try {
     const updated = await updateSequence(user.db, key, period, changes, { userId: user.userId })
     revalidatePath('/admin/master-data')
-    return { message: `The next one will be ${updated.preview}.` }
+    return { message: `The next one will be ${updated.preview}.`, at: Date.now() }
   } catch (error) {
     return explain(error, 'The sequence could not be changed.')
   }

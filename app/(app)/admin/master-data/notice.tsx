@@ -34,7 +34,19 @@ export function Notice({ state }: { state: MasterDataState }) {
   return null
 }
 
-/** The most recent of several action states, so one notice serves a section. */
+/**
+ * The most recent of several action states, so one notice serves a section.
+ *
+ * By `at`, not by argument order. Taking the first state with something in it
+ * meant a successful create went on masking every later error: the refusal
+ * from a deactivate arrived, the server had done the right thing, and the
+ * screen still showed "X added." The user clicks, is refused, and sees
+ * nothing — which reads as the button being broken.
+ */
 export function latest(...states: MasterDataState[]): MasterDataState {
-  return states.find((state) => state.error || state.message) ?? {}
+  return (
+    states
+      .filter((state) => state.error || state.message)
+      .sort((a, b) => (b.at ?? 0) - (a.at ?? 0))[0] ?? {}
+  )
 }

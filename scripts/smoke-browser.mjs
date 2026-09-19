@@ -276,6 +276,36 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
   await visit(`/movements/new?item=${itemId}&kind=${kind}`, `movement form · ${kind}`)
 }
 
+// --- locations ------------------------------------------------------------
+// Readable by anyone, editable by an admin. Checked here as the supervisor the
+// run signs in as, so this also proves the edit controls stay hidden from
+// somebody who may not use them.
+{
+  current = 'locations'
+  await visit('/locations')
+
+  const zones = await page.getByText(/goods arrive here|stock sits here|goods leave here/i).count()
+  if (zones === 0) {
+    failures.push({ page: '/locations', kind: 'empty', text: 'no locations were listed' })
+  } else {
+    console.log(`  ✓     locations · listed, grouped into ${zones} zone(s)`)
+  }
+
+  // A supervisor is not an admin, so nothing here should offer to change
+  // master data. The server would refuse anyway; showing the control and then
+  // refusing is a worse experience than not showing it.
+  const editControls = await page.getByRole('button', { name: /deactivate|^add$/i }).count()
+  if (editControls > 0) {
+    failures.push({
+      page: '/locations',
+      kind: 'role',
+      text: `a supervisor was offered ${editControls} master-data control(s)`,
+    })
+  } else {
+    console.log('  ✓     locations · edit controls hidden from a non-admin')
+  }
+}
+
 // --- scanning, which is the beat every demo opens with -------------------
 // Driven through the manual box rather than the keyboard wedge: the wedge
 // recognises a scan by TIMING, so a synthetic keystroke sequence either races
@@ -824,6 +854,74 @@ if ((await selfTest.count()) === 0) {
           page: '/admin/master-data',
           kind: 'guard',
           text: 'deactivating a site in use was not refused on screen',
+        })
+      }
+    }
+  }
+
+  // Locations as an admin: add one, then try to deactivate one that is holding
+  // stock. The refusal is the whole point of the screen — deactivating a place
+  // does not empty it, it just stops anyone finding what is in it.
+  current = 'admin · locations'
+  await visit('/locations', 'admin · locations')
+
+  {
+    const code = `S-${String(Date.now()).slice(-4)}`
+    await page.fill('#code', code)
+    await page.fill('#name', `Smoke rack ${code}`)
+    await page.getByRole('button', { name: /^add$/i }).first().click()
+
+    try {
+      await page
+        .getByText(new RegExp(`${code} added`, 'i'))
+        .first()
+        .waitFor({ timeout: 30_000 })
+      console.log(`  ✓     admin · added location ${code}`)
+    } catch {
+      failures.push({ page: '/locations', kind: 'broken', text: 'could not add a location' })
+    }
+
+    // A location that genuinely holds stock, found by reading the On hand
+    // column rather than by guessing. An earlier version picked the first row
+    // with a filter that matched an EMPTY location, deactivated it happily,
+    // and reported the guard as broken.
+    const rows = page.locator('tbody tr')
+    let stockedRow = null
+
+    for (let index = 0; index < (await rows.count()); index++) {
+      const row = rows.nth(index)
+      const onHand = (await row.locator('td').nth(4).textContent())?.trim()
+
+      if (onHand && /^\d+$/.test(onHand) && Number(onHand) > 0) {
+        stockedRow = row
+        break
+      }
+    }
+
+    const deactivate = stockedRow
+      ? stockedRow.getByRole('button', { name: /deactivate/i }).first()
+      : page.locator('nothing-matches')
+
+    if ((await deactivate.count()) === 0) {
+      failures.push({
+        page: '/locations',
+        kind: 'missing',
+        text: 'no deactivate control on a location row',
+      })
+    } else {
+      await deactivate.click()
+
+      try {
+        await page
+          .getByText(/still holds|only active location/i)
+          .first()
+          .waitFor({ timeout: 30_000 })
+        console.log('  ✓     admin · refused to deactivate a location in use')
+      } catch {
+        failures.push({
+          page: '/locations',
+          kind: 'guard',
+          text: 'deactivating a location holding stock was not refused on screen',
         })
       }
     }

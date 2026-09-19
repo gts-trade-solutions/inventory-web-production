@@ -21,7 +21,7 @@ import type { XlsxColumn } from '@/lib/export/xlsx'
 /** Rows per database round trip. Large enough to be few trips, small enough to stay flat. */
 const PAGE = 500
 
-export const LIST_KEYS = ['items', 'movements-detail', 'batches', 'serials'] as const
+export const LIST_KEYS = ['items', 'movements-detail', 'batches', 'serials', 'locations'] as const
 export type ListKey = (typeof LIST_KEYS)[number]
 
 export function isListKey(value: string): value is ListKey {
@@ -341,6 +341,69 @@ export function prepareListExport(
           column<Row>('Expires', (row) => row.expiryDate, 16),
           column<Row>('Received', (row) => row.receivedAt, 20),
           column<Row>('Supplier ref', (row) => row.supplierRef),
+        ],
+      }
+    }
+
+    case 'locations': {
+      const where: Prisma.LocationWhereInput = {
+        deletedAt: null,
+        ...(request.siteId ? { siteId: request.siteId } : {}),
+        ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }] } : {}),
+      }
+
+      const paged = byId((after) =>
+        db.location.findMany({
+          where: after ? { AND: [where, { id: { gt: after } }] } : where,
+          orderBy: { id: 'asc' },
+          take: PAGE,
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            zone: true,
+            active: true,
+            site: { select: { code: true } },
+            stockLevels: { where: { quantity: { gt: 0 } }, select: { quantity: true } },
+          },
+        }),
+      )
+
+      type Row = {
+        id: string
+        code: string
+        name: string
+        zone: string
+        active: boolean
+        site: { code: string }
+        onHand: number
+        lines: number
+      }
+
+      // On hand summed here rather than in SQL, matching what the screen shows.
+      const rows = (async function* (): AsyncGenerator<Row> {
+        for await (const location of paged) {
+          yield {
+            ...location,
+            zone: String(location.zone),
+            onHand: location.stockLevels.reduce((sum, level) => sum + level.quantity, 0),
+            lines: location.stockLevels.length,
+          }
+        }
+      })()
+
+      return {
+        name: 'locations',
+        sheetName: 'Locations',
+        rows: rows as AsyncIterable<Record<string, unknown>>,
+        columns: [
+          column<Row>('Site', (row) => row.site.code),
+          column<Row>('Code', (row) => row.code, 18),
+          column<Row>('Name', (row) => row.name, 36),
+          column<Row>('Zone', (row) => row.zone),
+          column<Row>('Lines', (row) => row.lines),
+          column<Row>('On hand', (row) => row.onHand),
+          column<Row>('Active', (row) => row.active),
         ],
       }
     }

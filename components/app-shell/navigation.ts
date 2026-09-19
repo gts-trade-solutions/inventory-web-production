@@ -65,7 +65,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/batches', label: 'Batches & expiry', icon: Layers },
       { href: '/serials', label: 'Serial units', icon: Boxes },
-      { href: '/locations', label: 'Locations', icon: MapPin, comingSoon: true },
+      { href: '/locations', label: 'Locations', icon: MapPin },
     ],
   },
   {
