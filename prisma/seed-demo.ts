@@ -439,6 +439,13 @@ async function main() {
     'batches',
     'epc_serial_blocks',
     'item_barcodes',
+    // Before locations and categories, which they reference.
+    //
+    // A table missing from this list does not fail — it ACCUMULATES. Ten demo
+    // resets had left ten copies of every putaway rule, which is invisible
+    // until somebody counts them or a suggestion starts behaving oddly. Any
+    // new table seeded below belongs here too.
+    'putaway_rules',
     'items',
     'categories',
     'locations',

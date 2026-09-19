@@ -113,11 +113,47 @@ What a demo can show today, with no Zebra device in the room:
 | **Approval**                 | Log in as Supervisor → review the variance line by line → approve → COUNT movements post → recount matches                                                                |
 | **Traceability**             | Pick a batch → every movement, every current location, every unit it produced. Pick a serial → its whole life, receipt to issue                                           |
 | **Offline and sync**         | Switch the simulated network off → record movements → "3 pending" → switch back on → per-row verdicts, including one deliberate negative-stock flag landing in Exceptions |
+| **Warehouse structure**      | Locations → Aisle A **contains** its racks and reports what is below them. A-01 sits at 66%, A-02 at **109% — over capacity**, and the receiving dock shows a dash because nobody has measured it |
+| **Putaway suggestion**       | Receive a chemical → the form names **B-01** and says why: _"Chemicals go to B-01, away from the walkway · 89% full after"_ — a rule somebody wrote, applied automatically                           |
+| **Recall, in bulk**          | Batches → tick several lots → **Quarantine** with a reference → all frozen at once, none of them moved. Re-run it and the already-frozen ones report as skipped, not failed |
+| **Reports and export**       | Stock on hand by item, location or batch → download as **Excel**, where a quantity is a number and a SKU keeps its leading zeros. Stock ageing shows untracked stock as **Unknown** rather than inventing an age |
 | **Two clients, one backend** | _(once the mobile app joins)_ Record on the phone, watch it appear on the web screen live over SSE                                                                        |
 | **Devices**                  | Connect and disconnect simulated devices, watch the live event console, run the connector self-test                                                                       |
 
 Every one of those runs the production code path. The only substitutions are the database and the device
 transport.
+
+### The beats worth slowing down for
+
+Three of them show something a demo audience does not expect, and they are the ones that land:
+
+**The system says when it does not know**, and the putaway beat is the sharpest example — worth explaining
+rather than clicking past.
+
+B-01 carries a real physical limit: 1.2 m³ and 400 kg. The system does **not** use it. Five of the six lines
+already sitting in B-01 have never been measured, so it cannot know how much room is actually left — and
+rather than compute a confident wrong answer from the one line it does know, it falls back to the cruder unit
+count and shows 89% of 300.
+
+That is the behaviour to point at. A system that used the volume limit here would say "plenty of room" about a
+bay that might be full, and send somebody to a shelf the goods do not fit on. They stop trusting it within a
+week.
+
+The same instinct runs through the rest: the receiving dock's fill reads `—` rather than 0% because nobody has
+measured it, and stock ageing marks untracked stock **Unknown** rather than inventing an age. _Empty_ and
+_nobody has measured this_ are opposite situations, and only one of them means there is room.
+
+> To show the cube path instead, measure the rest of B-01's contents first — Admin → Inventory, weight and
+> dimensions per item. The demo seeds six measured items out of twenty-odd on purpose, because a demo where
+> everything is measured only ever shows the easy half.
+
+**Nothing can be edited or deleted.** Correct a mistake and both the mistake and the correction stay in the
+history. Offer to show the ledger behind any number on screen — it is always there, and that is the point.
+
+**A-02 is deliberately over capacity, and the receipt still went through.** If the goods are physically on the
+shelf, refusing to record them would make the system disagree with the building. It warns; it does not block.
+That choice is worth stating out loud, because it is the opposite of what most software does and it is why
+people trust the numbers.
 
 ---
 
