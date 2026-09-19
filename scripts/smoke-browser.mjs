@@ -262,6 +262,61 @@ await followFirst('/batches', '/batches/', 'batch detail (quarantine form)')
     console.log(`  ✓     batch · recall pack — ${balanced?.trim().slice(0, 60)}`)
   }
 }
+// Bulk quarantine: the operation a recall actually needs, since a defect
+// notice names a list of lots rather than one. Driven through the real
+// checkboxes — a selection UI is exactly the kind of thing that looks right
+// and submits nothing.
+{
+  current = 'batches · bulk quarantine'
+  await visit('/batches')
+
+  const boxes = page.locator('input[name="batchIds"]')
+  const available = await boxes.count()
+
+  if (available < 2) {
+    failures.push({
+      page: '/batches',
+      kind: 'missing',
+      text: `expected selectable batches, found ${available}`,
+    })
+  } else {
+    await boxes.nth(0).check()
+    await boxes.nth(1).check()
+
+    // The bar only appears once something is selected.
+    const bar = page.getByText(/2 batches selected/i).first()
+    try {
+      await bar.waitFor({ timeout: 10_000 })
+    } catch {
+      failures.push({
+        page: '/batches',
+        kind: 'selection',
+        text: 'checking two boxes did not produce a selection bar',
+      })
+    }
+
+    await page.fill('#bulk-note', 'Smoke test recall')
+    await page
+      .getByRole('button', { name: /^quarantine$/i })
+      .first()
+      .click()
+
+    try {
+      const verdict = await page
+        .getByText(/\d+ changed/i)
+        .first()
+        .textContent({ timeout: 30_000 })
+      console.log(`  ✓     batches · bulk quarantine — ${verdict?.trim()}`)
+    } catch {
+      failures.push({
+        page: '/batches',
+        kind: 'flow',
+        text: 'bulk quarantine reported no result',
+      })
+    }
+  }
+}
+
 await followFirst('/serials', '/serials/', 'serial life history')
 
 // The movement form is the most interactive page, so it is the most likely to

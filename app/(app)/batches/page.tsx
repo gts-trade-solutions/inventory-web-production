@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AlertTriangle, CalendarClock, ShieldAlert } from 'lucide-react'
-import { requireUser } from '@/lib/auth/guards'
+import { requireUser, roleAtLeast } from '@/lib/auth/guards'
 import { expirySummary, listBatches, type ExpiryState } from '@/lib/services/traceability'
+import { UserRole } from '@prisma/client'
+import { BulkBatchForm } from './bulk-bar'
 import { PageHeader } from '@/components/page-header'
 import { ReportDownload } from '../reports/download'
 import { EmptyState } from '@/components/empty-state'
@@ -35,6 +37,10 @@ export default async function BatchesPage({
   searchParams: Promise<{ q?: string; state?: string }>
 }) {
   const user = await requireUser()
+  // Bulk quarantine is a supervisor decision, exactly as the single-batch one
+  // is. A bulk path with a lower bar would be a way around the role guarding
+  // the slow one.
+  const canQuarantine = roleAtLeast(user.role, UserRole.SUPERVISOR)
   const params = await searchParams
 
   const search = params.q?.trim() ?? ''
@@ -91,72 +97,85 @@ export default async function BatchesPage({
         />
         {state && <input type="hidden" name="state" value={state.toLowerCase()} />}
       </form>
-
-      <div className="rounded-lg border bg-card">
-        {batches.length === 0 ? (
-          <EmptyState
-            title="No batches match"
-            hint={
-              search || state
-                ? 'Try clearing the search or the filter.'
-                : 'No batch-tracked stock yet.'
-            }
-          />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Batch</TableHead>
-                <TableHead>Item</TableHead>
-                <TableHead>Expiry</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Supplier ref</TableHead>
-                <TableHead className="text-right">On hand</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {batches.map((batch) => (
-                <TableRow key={batch.id} className={cn(batch.onHand === 0 && 'opacity-50')}>
-                  <TableCell className="tabular">
-                    <Link href={`/batches/${batch.id}`} className="font-medium hover:underline">
-                      {batch.batchNo}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Link href={`/inventory/${batch.itemId}`} className="hover:underline">
-                      {batch.itemName}
-                    </Link>
-                    <span className="tabular block text-xs text-muted-foreground">
-                      {batch.itemSku}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <ExpiryBadge
-                      state={batch.expiryState}
-                      daysToExpiry={batch.daysToExpiry}
-                      date={batch.expiryDate}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={batch.status === 'ACTIVE' ? 'secondary' : 'destructive'}>
-                      {batch.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="tabular text-sm text-muted-foreground">
-                    {batch.supplierRef ?? '—'}
-                  </TableCell>
-                  <TableCell className="tabular text-right font-medium">
-                    {batch.onHand.toLocaleString()}
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      {batch.unit}
-                    </span>
-                  </TableCell>
+      <BulkBatchForm>
+        <div className="rounded-lg border bg-card">
+          {batches.length === 0 ? (
+            <EmptyState
+              title="No batches match"
+              hint={
+                search || state
+                  ? 'Try clearing the search or the filter.'
+                  : 'No batch-tracked stock yet.'
+              }
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10" />
+                  <TableHead>Batch</TableHead>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Expiry</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Supplier ref</TableHead>
+                  <TableHead className="text-right">On hand</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
+              </TableHeader>
+              <TableBody>
+                {batches.map((batch) => (
+                  <TableRow key={batch.id} className={cn(batch.onHand === 0 && 'opacity-50')}>
+                    <TableCell>
+                      {canQuarantine && (
+                        <input
+                          type="checkbox"
+                          name="batchIds"
+                          value={batch.id}
+                          aria-label={`Select ${batch.batchNo}`}
+                          className="size-4"
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell className="tabular">
+                      <Link href={`/batches/${batch.id}`} className="font-medium hover:underline">
+                        {batch.batchNo}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/inventory/${batch.itemId}`} className="hover:underline">
+                        {batch.itemName}
+                      </Link>
+                      <span className="tabular block text-xs text-muted-foreground">
+                        {batch.itemSku}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <ExpiryBadge
+                        state={batch.expiryState}
+                        daysToExpiry={batch.daysToExpiry}
+                        date={batch.expiryDate}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={batch.status === 'ACTIVE' ? 'secondary' : 'destructive'}>
+                        {batch.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="tabular text-sm text-muted-foreground">
+                      {batch.supplierRef ?? '—'}
+                    </TableCell>
+                    <TableCell className="tabular text-right font-medium">
+                      {batch.onHand.toLocaleString()}
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        {batch.unit}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </BulkBatchForm>
     </div>
   )
 }

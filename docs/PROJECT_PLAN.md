@@ -365,6 +365,16 @@ _Exit:_ an admin can configure and run the system without a developer.
 - **8.3** **Traceability reports:** batch genealogy, recall pack, serial history, expiry forecast, expired stock
 - **8.4** XLSX export on every list and report, streaming for large result sets
 - **8.5** Bulk operations: bulk adjust, bulk relabel, bulk print, bulk quarantine
+  - Bulk quarantine has the screen, on the batch list, because that is the operation a recall needs: a defect
+    notice names a list of lots, not one. Bulk print and relabel are the same call with a different template.
+  - **Bulk adjust has the service and no screen of its own, deliberately.** The two ways somebody actually
+    arrives at a list of corrections already have better homes: counting a location is the count sheet, which
+    carries variance review and supervisor approval, and a spreadsheet of counts is Admin → Import, which
+    previews every row before it writes. A third screen doing the same job with neither would be the one people
+    reach for by mistake.
+  - Every bulk action goes through `recordMovement`, so the adjustment cap and the reason-code requirement
+    apply exactly as they do to one correction typed into the form. A bulk path that skipped them would be a
+    way around every limit an administrator set.
 - **8.6** Scheduled email exports _(P1)_
 - **8.7** Nightly projection-drift job, expiry sweep, and a manual rebuild action
 
