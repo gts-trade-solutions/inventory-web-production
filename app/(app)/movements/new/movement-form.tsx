@@ -90,7 +90,10 @@ export function MovementForm({
           label="To"
           locations={data.locations}
           onHand={data.onHandByLocation}
+          totalOnHand={data.totalOnHandByLocation}
           unit={item.unit}
+          // Fill matters where stock is going IN. It is noise on the way out.
+          showFill
           error={state.fieldErrors?.toLocationId}
         />
       )}
@@ -512,25 +515,43 @@ function LocationField({
   label,
   locations,
   onHand,
+  totalOnHand,
   unit,
   value,
   onChange,
   onlyWithStock,
+  showFill,
   error,
 }: {
   id: string
   label: string
   locations: MovementFormData['locations']
   onHand: Record<string, number>
+  totalOnHand?: Record<string, number>
   unit: string
   value?: string
   onChange?: (value: string) => void
   onlyWithStock?: boolean
+  /** Only where stock is going IN. How full a shelf is does not matter on the way out. */
+  showFill?: boolean
   error?: string
 }) {
   const options = onlyWithStock
     ? locations.filter((location) => (onHand[location.id] ?? 0) !== 0)
     : locations
+
+  /**
+   * How full a place is, as a guide before choosing it rather than a complaint
+   * afterwards. Blank when nobody set a capacity — an unknown is reported as
+   * unknown rather than guessed, the same way stock ageing handles an item
+   * with no batch.
+   */
+  const fillOf = (locationId: string, capacity: number | null) => {
+    if (!showFill || !capacity || !totalOnHand) return ''
+
+    const percent = Math.round(((totalOnHand[locationId] ?? 0) / capacity) * 100)
+    return ` · ${percent}% full`
+  }
 
   return (
     <Field id={id} label={label} error={error}>
@@ -547,6 +568,7 @@ function LocationField({
           <option key={location.id} value={location.id}>
             {location.code} — {location.name}
             {onHand[location.id] ? ` (${onHand[location.id]} ${unit})` : ''}
+            {fillOf(location.id, location.capacityUnits)}
           </option>
         ))}
       </select>

@@ -69,13 +69,65 @@ function sgtin96(gtin13: string, serial: number): string {
   return hex.toUpperCase()
 }
 
-const LOCATIONS = [
+/**
+ * The demo warehouse, as a tree.
+ *
+ * The aisles are real locations that contain the racks, rather than a prefix in
+ * a code string. Stock sits in the racks — the leaves — and the aisles report
+ * what is below them, which is the whole reason the structure exists.
+ *
+ * Parents are listed before their children, because each is created in order.
+ *
+ * The capacities are chosen to show every state the screen can be in: one rack
+ * comfortable, one close to full, one OVER capacity, and one with no figure at
+ * all. A demo where everything reads 40% teaches nobody what the colours mean.
+ */
+const LOCATIONS: Array<{
+  code: string
+  name: string
+  zone: LocationZone
+  parent?: string
+  capacityUnits?: number
+}> = [
+  // Capacity left unset on purpose: a dock is a floor, not a rack, and the
+  // screen has to show "unknown" rather than invent a number.
   { code: 'RCV', name: 'Receiving dock', zone: LocationZone.INBOUND },
-  { code: 'A-01', name: 'Aisle A · Rack 01', zone: LocationZone.STORAGE },
-  { code: 'A-02', name: 'Aisle A · Rack 02', zone: LocationZone.STORAGE },
-  { code: 'B-01', name: 'Aisle B · Rack 01', zone: LocationZone.STORAGE },
-  { code: 'B-02', name: 'Aisle B · Rack 02', zone: LocationZone.STORAGE },
-  { code: 'DSP', name: 'Dispatch bay', zone: LocationZone.OUTBOUND },
+
+  { code: 'AISLE-A', name: 'Aisle A', zone: LocationZone.STORAGE },
+  {
+    code: 'A-01',
+    name: 'Rack 01',
+    zone: LocationZone.STORAGE,
+    parent: 'AISLE-A',
+    capacityUnits: 400,
+  },
+  // Deliberately over capacity once the seed stock lands, so the overfull
+  // warning is visible in a demo without anybody having to arrange it.
+  {
+    code: 'A-02',
+    name: 'Rack 02',
+    zone: LocationZone.STORAGE,
+    parent: 'AISLE-A',
+    capacityUnits: 1000,
+  },
+
+  { code: 'AISLE-B', name: 'Aisle B', zone: LocationZone.STORAGE },
+  {
+    code: 'B-01',
+    name: 'Rack 01',
+    zone: LocationZone.STORAGE,
+    parent: 'AISLE-B',
+    capacityUnits: 300,
+  },
+  {
+    code: 'B-02',
+    name: 'Rack 02',
+    zone: LocationZone.STORAGE,
+    parent: 'AISLE-B',
+    capacityUnits: 500,
+  },
+
+  { code: 'DSP', name: 'Dispatch bay', zone: LocationZone.OUTBOUND, capacityUnits: 200 },
 ]
 
 interface Product {
@@ -423,9 +475,15 @@ async function main() {
   const operator = await prisma.user.findFirstOrThrow({ where: { role: UserRole.USER } })
 
   const locations = new Map<string, string>()
-  for (const location of LOCATIONS) {
+  for (const { parent, ...location } of LOCATIONS) {
     const created = await prisma.location.create({
-      data: { id: randomUUID(), siteId: site.id, ...location },
+      data: {
+        id: randomUUID(),
+        siteId: site.id,
+        // Parents are listed first, so this is always already created.
+        parentId: parent ? locations.get(parent)! : null,
+        ...location,
+      },
     })
     locations.set(location.code, created.id)
   }

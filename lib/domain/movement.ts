@@ -152,6 +152,12 @@ export const MovementErrorCode = {
    * is in another warehouse, which is a different thing to go and fix.
    */
   LOCATION_WRONG_SITE: 'LOCATION_WRONG_SITE',
+  /**
+   * The location exists and is in the right site, but it CONTAINS other
+   * locations. It names a grouping — an aisle, a zone — rather than a place a
+   * pallet goes.
+   */
+  LOCATION_NOT_A_PLACE: 'LOCATION_NOT_A_PLACE',
 } as const
 export type MovementErrorCode = (typeof MovementErrorCode)[keyof typeof MovementErrorCode]
 

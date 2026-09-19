@@ -253,11 +253,37 @@ model Location {
   zone   LocationZone @default(STORAGE)
   active Boolean      @default(true)
 
+  /// Parent place, so a warehouse can be described as it is built:
+  /// zone → aisle → rack → shelf, to whatever depth a site needs.
+  /// NULL is a top-level location within its site.
+  ///
+  /// Stock sits at LEAVES only. A place that contains other places is a
+  /// grouping, not somewhere you put a pallet, and allowing both would make
+  /// "how full is Aisle A" ambiguous — its own stock, or its children's, or
+  /// both? Enforced in lib/services/locations.ts, which the database cannot
+  /// express.
+  parentId String? @db.Char(36)
+
+  /// How many units this place holds, as a ROUGH GUIDE. NULL means nobody has
+  /// said, and nothing is inferred from that.
+  ///
+  /// Deliberately in units rather than volume: volume cannot be used for
+  /// anything until items carry dimensions, and a capacity nothing can compute
+  /// against is a field that looks like a control and is not one. Volume and
+  /// weight arrive with item dimensions (PROJECT_PLAN, putaway step C).
+  ///
+  /// It WARNS, it never blocks. If the goods are physically on the shelf,
+  /// refusing the receipt makes the ledger disagree with the building, which is
+  /// the failure this whole design exists to avoid.
+  capacityUnits Int?
+
   createdAt DateTime  @default(now()) @db.DateTime(3)
   updatedAt DateTime  @updatedAt @db.DateTime(3)
   deletedAt DateTime? @db.DateTime(3)
 
   site          Site           @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  parent        Location?      @relation("LocationTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children      Location[]     @relation("LocationTree")
   movementsFrom Movement[]     @relation("MovementFrom")
   movementsTo   Movement[]     @relation("MovementTo")
   stockLevels   StockLevel[]
@@ -268,6 +294,7 @@ model Location {
   @@unique([siteId, code])
   @@index([updatedAt])
   @@index([zone])
+  @@index([parentId])
   @@map("locations")
 }
 

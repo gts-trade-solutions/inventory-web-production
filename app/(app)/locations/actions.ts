@@ -29,11 +29,25 @@ function explain(error: unknown, fallback: string): LocationState {
   return { error: fallback, at: Date.now() }
 }
 
+/**
+ * An empty capacity box means "nobody has said", not zero.
+ *
+ * A number input submits '' when cleared, and coercing that to 0 would record
+ * every unmeasured shelf as holding nothing — which then shows as infinitely
+ * overfull the moment a single unit lands there.
+ */
+const capacity = z
+  .union([z.literal(''), z.coerce.number().int().min(1)])
+  .nullish()
+  .transform((value) => (value === '' || value === undefined ? null : value))
+
 const createSchema = z.object({
   siteId: z.string().uuid('Choose a site.'),
   code: z.string().trim().min(1, 'Enter a location code.').max(32),
   name: z.string().trim().min(1, 'Enter a location name.').max(120),
   zone: z.nativeEnum(LocationZone),
+  parentId: z.string().uuid().nullable(),
+  capacityUnits: capacity,
 })
 
 export async function createLocationAction(
@@ -47,6 +61,8 @@ export async function createLocationAction(
     code: formData.get('code'),
     name: formData.get('name'),
     zone: formData.get('zone'),
+    parentId: emptyToNull(formData.get('parentId')),
+    capacityUnits: formData.get('capacityUnits'),
   })
   if (!parsed.success)
     return { error: parsed.error.issues[0]?.message ?? 'Check the form.', at: Date.now() }
@@ -79,6 +95,17 @@ export async function updateLocationAction(
     const zone = String(formData.get('zone') ?? '')
     if (zone in LocationZone) changes.zone = zone as LocationZone
   }
+  if (formData.has('parentId')) changes.parentId = emptyToNull(formData.get('parentId'))
+  if (formData.has('capacityUnits')) {
+    const parsed = capacity.safeParse(formData.get('capacityUnits'))
+    if (!parsed.success) {
+      return {
+        error: 'Capacity is a whole number of units, from 1 up. Leave it blank if it is not known.',
+        at: Date.now(),
+      }
+    }
+    changes.capacityUnits = parsed.data
+  }
 
   try {
     await updateLocation(user.db, id, changes, { userId: user.userId })
@@ -107,4 +134,9 @@ export async function deleteLocationAction(
 
   revalidatePath('/locations')
   return { message: 'Location removed.', at: Date.now() }
+}
+
+function emptyToNull(value: FormDataEntryValue | null): string | null {
+  const text = String(value ?? '').trim()
+  return text === '' ? null : text
 }

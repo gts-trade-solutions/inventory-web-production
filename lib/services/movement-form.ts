@@ -41,7 +41,16 @@ export interface MovementFormData {
     trackingMode: TrackingMode
     expiryRequired: boolean
   }
-  locations: Array<{ id: string; code: string; name: string; zone: string }>
+  locations: Array<{
+    id: string
+    code: string
+    name: string
+    zone: string
+    /** A rough guide, or null when nobody has said. Warns; never blocks. */
+    capacityUnits: number | null
+  }>
+  /** Everything on hand at each location, across all items — for the fill hint. */
+  totalOnHandByLocation: Record<string, number>
   /** On-hand per location, for the "available" hint next to the source. */
   onHandByLocation: Record<string, number>
   batches: BatchOption[]
@@ -83,8 +92,17 @@ export async function loadMovementForm(
 
   const [locations, levels, batchRows, reasonCodes] = await Promise.all([
     db.location.findMany({
-      where: { siteId: options.siteId, deletedAt: null, active: true },
-      select: { id: true, code: true, name: true, zone: true },
+      // LEAVES only. A location containing other locations is a grouping —
+      // "Aisle A" — not a place a pallet goes, and offering it would invite a
+      // rejection the operator could have been spared. recordMovement refuses
+      // it anyway; this is so the picker never proposes it.
+      where: {
+        siteId: options.siteId,
+        deletedAt: null,
+        active: true,
+        children: { none: { deletedAt: null } },
+      },
+      select: { id: true, code: true, name: true, zone: true, capacityUnits: true },
       orderBy: { code: 'asc' },
     }),
     db.stockLevel.findMany({
@@ -108,6 +126,20 @@ export async function loadMovementForm(
   const onHandByLocation: Record<string, number> = {}
   for (const level of levels) {
     onHandByLocation[level.locationId] = (onHandByLocation[level.locationId] ?? 0) + level.quantity
+  }
+
+  // Fill is about the PLACE, not this item, so it counts everything there.
+  // "A-01 is 94% full" is the useful sentence when deciding where to put a
+  // pallet; "you have 12 of this item here" is a different question.
+  const totals = await db.stockLevel.groupBy({
+    by: ['locationId'],
+    where: { quantity: { gt: 0 }, locationId: { in: locations.map((location) => location.id) } },
+    _sum: { quantity: true },
+  })
+
+  const totalOnHandByLocation: Record<string, number> = {}
+  for (const row of totals) {
+    totalOnHandByLocation[row.locationId] = row._sum.quantity ?? 0
   }
 
   // Availability is per location when one is chosen, because "20 in stock" is
@@ -185,6 +217,7 @@ export async function loadMovementForm(
     },
     locations,
     onHandByLocation,
+    totalOnHandByLocation,
     batches,
     proposedBatchId: proposed?.id ?? null,
     serials: serials.map((unit) => ({

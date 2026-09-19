@@ -284,11 +284,34 @@ for (const kind of ['receive', 'issue', 'move', 'adjust', 'scrap']) {
   current = 'locations'
   await visit('/locations')
 
-  const zones = await page.getByText(/goods arrive here|stock sits here|goods leave here/i).count()
-  if (zones === 0) {
+  const listed = await page.getByText(/A-01|Rack 01/i).count()
+  if (listed === 0) {
     failures.push({ page: '/locations', kind: 'empty', text: 'no locations were listed' })
   } else {
-    console.log(`  ✓     locations · listed, grouped into ${zones} zone(s)`)
+    console.log(`  ✓     locations · listed`)
+  }
+
+  // The structure is real, not a prefix in a code. An aisle contains racks and
+  // says so, and reports what is below it.
+  const branches = await page.getByText(/holds places/i).count()
+  if (branches === 0) {
+    failures.push({
+      page: '/locations',
+      kind: 'structure',
+      text: 'no location was shown as containing others, so the tree is not rendering',
+    })
+  } else {
+    console.log(`  ✓     locations · ${branches} location(s) shown as holding others`)
+  }
+
+  // Fill, including the overfull one the demo seeds deliberately. A capacity
+  // that never shows a figure is a column that does nothing.
+  const fills = await page.getByText(/^\d+%$/).count()
+  if (fills === 0) {
+    failures.push({ page: '/locations', kind: 'capacity', text: 'no fill percentage was shown' })
+  } else {
+    const over = await page.getByText(/^1[0-9]{2}%$|^[2-9][0-9]{2}%$/).count()
+    console.log(`  ✓     locations · ${fills} fill figure(s), ${over} of them over capacity`)
   }
 
   // A supervisor is not an admin, so nothing here should offer to change
@@ -885,12 +908,28 @@ if ((await selfTest.count()) === 0) {
     // column rather than by guessing. An earlier version picked the first row
     // with a filter that matched an EMPTY location, deactivated it happily,
     // and reported the guard as broken.
+    // The "On hand" column is found by its HEADER, not by position. An earlier
+    // version hard-coded the index and silently started reading the wrong
+    // column the moment a column was inserted — reporting the guard as broken.
+    const headers = await page
+      .locator('thead th')
+      .evaluateAll((cells) => cells.map((cell) => cell.textContent?.trim() ?? ''))
+    const onHandColumn = headers.findIndex((header) => /^on hand$/i.test(header))
+
+    if (onHandColumn < 0) {
+      failures.push({
+        page: '/locations',
+        kind: 'missing',
+        text: `no "On hand" column; headers were ${headers.join(' | ')}`,
+      })
+    }
+
     const rows = page.locator('tbody tr')
     let stockedRow = null
 
     for (let index = 0; index < (await rows.count()); index++) {
       const row = rows.nth(index)
-      const onHand = (await row.locator('td').nth(4).textContent())?.trim()
+      const onHand = (await row.locator('td').nth(onHandColumn).textContent())?.trim()
 
       if (onHand && /^\d+$/.test(onHand) && Number(onHand) > 0) {
         stockedRow = row

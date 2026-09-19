@@ -66,6 +66,7 @@ const DOMAIN_CODES = new Set([
   'SERIAL_ALREADY_ISSUED',
   'ADJUSTMENT_TOO_LARGE',
   'LOCATION_WRONG_SITE',
+  'LOCATION_NOT_A_PLACE',
 ])
 
 const STATUS_BY_CODE: Record<string, number> = {

@@ -244,6 +244,39 @@ export async function recordMovementInTx(
     }
   }
 
+  /**
+   * Stock sits at the bottom of the tree, never in a grouping.
+   *
+   * A location that contains other locations is "Aisle A", not a shelf. Putting
+   * a pallet directly in it would make every rollup below it ambiguous — is
+   * Aisle A's total its own stock, its racks', or both? — and the answer would
+   * differ depending on which screen asked.
+   *
+   * Checked here for the same reason as the site check above: this is the one
+   * write path, and the movement form already hides branches from its picker,
+   * so only the API and the importer can reach this.
+   */
+  const branches = await tx.location.findMany({
+    where: { parentId: { in: locationIds }, deletedAt: null },
+    select: { parentId: true },
+    distinct: ['parentId'],
+  })
+
+  if (branches.length > 0) {
+    const codes = locations
+      .filter((location) => branches.some((branch) => branch.parentId === location.id))
+      .map((location) => location.code)
+
+    return {
+      status: 'REJECTED',
+      error: {
+        code: MovementErrorCode.LOCATION_NOT_A_PLACE,
+        message: `${codes.join(', ')} ${codes.length === 1 ? 'contains' : 'contain'} other locations, so ${codes.length === 1 ? 'it is' : 'they are'} a grouping rather than somewhere stock goes. Pick one of the places inside.`,
+        details: { locationCodes: codes },
+      },
+    }
+  }
+
   const knownLocationIds = new Set(locations.map((location) => location.id))
 
   // --- 1. Lock the stock rows -------------------------------------------
