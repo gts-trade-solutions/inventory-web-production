@@ -85,6 +85,27 @@ describe('pull', () => {
     expect(result.nextCursor).toBeTruthy()
   })
 
+  /**
+   * The two fields a client needs to avoid a rejection it cannot see coming.
+   *
+   * Without `parentId` a picker offers "Aisle A" — a grouping, not a shelf —
+   * and the push comes back LOCATION_NOT_A_PLACE. Without `siteId` a client
+   * with more than one site can pair the wrong site with a rack and be refused
+   * with LOCATION_WRONG_SITE. Both rules are enforced on the server; both are
+   * unknowable from a payload that omits these.
+   *
+   * Pinned here because the omission is silent: everything still compiles,
+   * every existing test passes, and the failure only appears on a device.
+   */
+  it('tells a client which site a location is in, and whether it is a grouping', async () => {
+    const result = await pull(prisma, {})
+    const location = result.locations.find((row) => row.id === wh.locationA)
+
+    expect(location).toBeDefined()
+    expect(location).toHaveProperty('siteId', wh.siteId)
+    expect(location).toHaveProperty('parentId')
+  })
+
   it('returns only what changed after a cursor', async () => {
     const first = await pull(prisma, {})
 

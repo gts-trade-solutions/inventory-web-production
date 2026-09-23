@@ -238,6 +238,26 @@ export async function pull(db: PrismaClient, options: PullOptions) {
           name: true,
           zone: true,
           active: true,
+          /**
+           * The two fields a client needs to avoid a rejection it cannot see
+           * coming.
+           *
+           * `siteId`, because a movement names its own site and the server now
+           * checks that every location in it belongs to that site. A client
+           * that does not know which site a rack is in can pair the wrong two
+           * and be refused with LOCATION_WRONG_SITE.
+           *
+           * `parentId`, because stock sits at the LEAVES. A location with
+           * children is a grouping — "Aisle A" — and pushing a movement into
+           * one is refused with LOCATION_NOT_A_PLACE. Without this field a
+           * picker would happily offer Aisle A, and the operator would find out
+           * only when the sync came back.
+           *
+           * Both are pure additions: a client that ignores unknown fields is
+           * unaffected.
+           */
+          siteId: true,
+          parentId: true,
           deletedAt: true,
           updatedAt: true,
         },

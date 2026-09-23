@@ -292,3 +292,57 @@ Authorization: Bearer not.a.real.token
 ### DEVICE_REVOKED means an admin killed this handset.
 # Keep the unsynced outbox and prompt for re-login. Never discard it: it is work
 # somebody physically did.
+
+### LOCATION_NOT_A_PLACE — pushing stock into a grouping.
+# Locations nest. A location that has children is "Aisle A", not a shelf, and
+# stock sits at the leaves. Filter your destination picker to locations that are
+# not the parentId of any other location; sync/pull now sends parentId so you
+# can. Use a location that appears as another location's parentId — AISLE-A in
+# the demo data. Expect 422.
+POST {{base}}/sync/push
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "movements": [
+    {
+      "id": "6f1c9a2e-0000-4000-8000-00000000a001",
+      "type": "RECEIVE",
+      "itemId": "PUT-AN-ITEM-ID-HERE",
+      "quantity": 1,
+      "toLocationId": "PUT-A-PARENT-LOCATION-ID-HERE",
+      "occurredAt": "2026-09-23T09:00:00+05:30",
+      "siteId": "PUT-A-SITE-ID-HERE"
+    }
+  ]
+}
+
+### LOCATION_WRONG_SITE — one movement, one site.
+# Every location named must belong to the movement's siteId. Use the siteId on
+# each pulled location; do not infer it. There is no inter-site transfer — that
+# is an issue from one site and a receipt into the other. Expect 422.
+
+### SITE_NOT_ALLOWED — claiming a site this token does not carry.
+# siteId comes from the body, because the phone records where it was standing,
+# so it is checked against the token's siteIds rather than trusted. Refused per
+# ROW, so one bad movement never blocks the rest of an outbox. Expect the row to
+# come back REJECTED while its neighbours are ACCEPTED.
+
+### ADJUSTMENT_TOO_LARGE — beyond the cap an administrator set.
+# Was a 500 until 2026-09-19 and is now a 422. If your client treats 5xx as
+# "retry later", this one no longer belongs in that branch: it is a refusal to
+# show the operator, not a server fault.
+
+###############################################################################
+# 9. Readiness, for whoever deploys this
+###############################################################################
+
+### Liveness — is the web tier up? Does NOT touch the database.
+# This is the one a handset uses to decide whether it is offline.
+GET {{base}}/health
+
+### Readiness — would a real request work? Touches the database.
+# Answers 503 when the database is unreachable. Point a load balancer at this
+# one and an uptime monitor at the one above; swapping them is how a brief
+# database blip takes every instance out of rotation.
+GET {{base}}/health/ready

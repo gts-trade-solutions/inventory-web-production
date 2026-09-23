@@ -48,6 +48,8 @@
 | 409                  | `CONFLICT`, `SESSION_ALREADY_SUBMITTED`                                                                                                                                                                                          |
 | 422                  | `UNKNOWN_ITEM`, `UNKNOWN_LOCATION`, `INVALID_QUANTITY`, `INSUFFICIENT_STOCK`, `SAME_LOCATION`, `REASON_REQUIRED`, `NO_CHANGE`                                                                                                    |
 | 422 _(traceability)_ | `BATCH_REQUIRED`, `UNKNOWN_BATCH`, `BATCH_EXPIRED`, `BATCH_BLOCKED`, `EXPIRY_REQUIRED`, `SERIALS_REQUIRED`, `SERIAL_COUNT_MISMATCH`, `UNKNOWN_SERIAL`, `SERIAL_NOT_AT_LOCATION`, `SERIAL_ALREADY_ISSUED`, `REASON_CODE_REQUIRED` |
+| 422 _(structure)_    | `LOCATION_WRONG_SITE`, `LOCATION_NOT_A_PLACE` — see the two rules under `/sync/push`                                                                                                                                          |
+| 422 _(policy)_       | `ADJUSTMENT_TOO_LARGE` — beyond the per-adjustment cap an administrator set. **Was a 500 until 2026-09-19**; a client that treated it as a server fault and retried will now get a clean refusal it can show |
 | 429                  | `RATE_LIMITED`                                                                                                                                                                                                                   |
 | 500                  | `INTERNAL`                                                                                                                                                                                                                       |
 | 502                  | `PRINTER_UNREACHABLE`, `READER_UNREACHABLE`                                                                                                                                                                                      |
@@ -157,8 +159,10 @@ sent again — a first sync that drops items while reporting itself complete.
   "locations": [
     {
       "id": "...",
+      "siteId": "...",
+      "parentId": null,
       "code": "A-01",
-      "name": "Aisle A · Rack 01",
+      "name": "Rack 01",
       "zone": "STORAGE",
       "active": true,
       "updatedAt": "..."
@@ -323,6 +327,32 @@ Each row is judged independently, so a single bad row never blocks the batch:
 
 Only `REJECTED` needs a human at the client. `FLAGGED` is deliberate policy: an offline client cannot know
 another device already issued the stock, and rejecting the row would discard work already done on the floor.
+
+### Two rules a client must honour to avoid rejections it cannot see coming
+
+Both are enforced server-side on every write path, and both are knowable from `sync/pull`. A client that
+ignores them will build a picker that offers choices the server refuses.
+
+**1. Stock sits at the LEAVES of the location tree.** Locations nest — a zone holds aisles, an aisle holds
+racks. A location that has children is a grouping, not somewhere a pallet goes. Filter your destination picker
+to locations that are **not** the `parentId` of any other location.
+
+```
+LOCATION_NOT_A_PLACE · 422
+"AISLE-A contains other locations, so it is a grouping rather than somewhere stock goes.
+ Pick one of the places inside."
+```
+
+**2. A movement happens at ONE site.** Every location named in it must belong to the `siteId` on the movement.
+Use the `siteId` now included on each pulled location; do not infer it.
+
+```
+LOCATION_WRONG_SITE · 422
+"F-01 belongs to a different site. Stock cannot be moved between sites in one movement."
+```
+
+There is no inter-site transfer. Moving stock between warehouses is an issue from one and a receipt into the
+other — two movements, and nothing yet ties the pair together.
 
 **Site scope is enforced on the way in.** Each movement carries its own `siteId` — a phone records which
 warehouse it was standing in — and that value is checked against the signed token rather than trusted. Two
