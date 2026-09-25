@@ -74,10 +74,41 @@ it finds history it does not like, and on a production database that offer shoul
 **Migrate before starting the new build, not after.** The running instance is the old code; a new column it
 does not know about is harmless, a missing one is not.
 
+### Ubuntu, nginx and pm2
+
+Three files in the repository cover this stack. Each carries its reasoning in comments; the placeholders to
+replace are marked `CHANGE ME` or named in the header.
+
+| File                                        | Install with                                      |
+| ------------------------------------------- | ------------------------------------------------- |
+| [`ecosystem.config.cjs`](../ecosystem.config.cjs) | `pm2 start ecosystem.config.cjs && pm2 save`  |
+| [`deploy/nginx.conf`](../deploy/nginx.conf) | copy to `/etc/nginx/sites-available/inventory`    |
+| [`deploy/crontab`](../deploy/crontab)       | `crontab -u inventory deploy/crontab`             |
+
+Three things in them are not stylistic preferences:
+
+**One instance, fork mode.** The SSE event bus (`lib/events/bus.ts`) and the rate limiter
+(`lib/api/rate-limit.ts`) both keep state in-process on `globalThis`. Under `pm2 -i max`, an event recorded by
+one worker never reaches a console held open by another — nothing errors, the screen simply stops updating — and
+the 10/minute per-account sign-in limit becomes 10 per worker. Both are stated single-instance assumptions.
+Going wider means moving both to Redis first.
+
+**`proxy_buffering off` on `/api/v1/stream`.** Otherwise nginx holds the event stream waiting for a body that
+never ends, and the device console shows nothing while reporting no error. §8 lists the symptom because it has
+been diagnosed the hard way already.
+
+**`X-Forwarded-Proto` on the main location, and `AUTH_TRUST_HOST=true` in `.env`.** Two halves of one thing:
+without them Auth.js sees plain HTTP behind the proxy and issues `http://` callbacks that fail against an
+`https://` `AUTH_URL`.
+
+One more that catches everyone: cron runs with a near-empty `PATH`, and the scheduled scripts resolve `.env`
+relative to the working directory. Both jobs therefore need `PATH` set and a `cd` into the app directory — the
+committed crontab does both.
+
 ### Upgrading
 
 ```sh
-git pull && npm ci && npm run db:deploy && npm run build && npm start
+git pull && npm ci && npm run db:deploy && npm run build && pm2 reload inventory
 ```
 
 Take a backup first (§6). Not because migrations usually go wrong, but because the one time it matters is the

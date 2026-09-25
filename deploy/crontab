@@ -1,0 +1,57 @@
+# Scheduled work for the inventory app. OPERATIONS.md §5 marks both jobs required.
+#
+# Install as the user that owns the app — NOT root. The app's files, the backup
+# directory and these jobs should all belong to one unprivileged user:
+#
+#   crontab -u inventory deploy/crontab
+#   crontab -l -u inventory          # confirm it took
+#
+# PLACEHOLDERS: /srv/inventory (twice per line) and the MAILTO address.
+
+# Cron runs with a near-empty PATH — /usr/bin is not on it by default, so `npm`
+# is not found and the job fails silently. This line is why these entries work.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SHELL=/bin/bash
+
+# Cron mails stdout to the crontab owner by default, i.e. nowhere anybody reads.
+# The sweep reporting drift is the single most important message this system can
+# send; it must reach a person.
+MAILTO=ops@example.com
+
+# The `cd` is load-bearing. Both scripts call `import 'dotenv/config'`, which
+# resolves .env relative to the working directory. Run them from anywhere else
+# and they start with no DATABASE_URL and fail on connect.
+
+# --- The nightly sweep -------------------------------------------------------
+#
+# Compares stock_levels against the ledger, and expires batches whose date has
+# passed. The projection agreeing with the ledger is this system's central claim
+# about itself; until this runs on a schedule, the only thing that has ever
+# checked it is a test on a throwaway database.
+#
+# 02:10, before the backup, so a dump captures a swept database.
+10 2 * * *  cd /srv/inventory && npm run sweep >> /var/log/inventory/sweep.log 2>&1
+
+# Demo mode is a product feature with its own database, so it drifts too. Later
+# and separate: a failure here must not stop the live sweep from having run.
+25 2 * * *  cd /srv/inventory && npm run sweep -- demo >> /var/log/inventory/sweep-demo.log 2>&1
+
+# --- Backups -----------------------------------------------------------------
+#
+# mysqldump --single-transaction, password passed via MYSQL_PWD rather than argv
+# so it never appears in `ps`. Writes to BACKUP_DIR from .env.
+40 2 * * *  cd /srv/inventory && npm run backup >> /var/log/inventory/backup.log 2>&1
+
+# --- Not scheduled, on purpose -----------------------------------------------
+#
+# `npm run restore:verify` does a full round trip into a scratch database and
+# compares table sets, row counts and CHECKSUM TABLE. It is the only thing that
+# turns "we have backups" from a hypothesis into a fact.
+#
+# It is not in cron because it should be run by a person who then reads the
+# output — an automated drill whose result nobody looks at proves nothing. Run it
+# once before real data exists, and quarterly after. OPERATIONS.md §6.
+#
+# Also consider: BACKUP_DIR fills up. Nothing here prunes it, because how long to
+# keep dumps of a warehouse's stock history is a retention decision, not a
+# default. Decide it, then add the find -mtime line here.
