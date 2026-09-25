@@ -28,7 +28,7 @@ so at the top.
 
 ## 2. Databases
 
-Three, from `scripts/setup-mysql.sql`:
+From `scripts/setup-mysql.sql`. It creates the first two always, and the third only when asked:
 
 | Database          | What it is                                              | On the server?                           |
 | ----------------- | ------------------------------------------------------- | ---------------------------------------- |
@@ -37,7 +37,41 @@ Three, from `scripts/setup-mysql.sql`:
 | `inventory_test`  | Integration tests. Truncated between cases.              | No. Development machines only.           |
 
 `inventory_test` must never exist on a production server. The tests `TRUNCATE` their way through it, and a
-misconfigured `DATABASE_URL_TEST` pointing anywhere else would do the same there.
+misconfigured `DATABASE_URL_TEST` pointing anywhere else would do the same there. The script therefore skips it
+unless you pass `SET @with_test_db = 1;`, which development machines do and servers do not.
+
+### Running it
+
+The script **creates no users and contains no password**. User provisioning belongs to the environment: most
+servers already have a deployment user shared across projects, and a second one per app is another credential to
+rotate, store and leak. Name the existing user and the script grants it what it needs:
+
+```sh
+{ echo "SET @db_user = 'deploy';"; cat scripts/setup-mysql.sql; } | sudo mysql
+```
+
+Add `SET @with_test_db = 1;` to that prepended line on a development machine.
+
+`@db_host` defaults to `localhost`. Check what your user actually exists as before assuming, because the grant
+must match a host exactly:
+
+```sh
+sudo mysql -e "SELECT user, host FROM mysql.user WHERE user = 'deploy';"
+```
+
+Since MySQL 8.0, `GRANT` cannot create a user, so a host that does not exist fails loudly rather than quietly
+creating a second, password-less account. Omit `@db_user` entirely and the script stops before creating anything,
+with `Table 'mysql.set @db_user first - see setup-mysql.sql header' doesn't exist` — the guard working, not a
+fault.
+
+It finishes by printing the databases that exist and the privileges the user now holds on each. Expect
+`inventory`, `inventory_demo` and `prisma_migrate_shadow_db_%`. That last one is easy to overlook and its absence
+surfaces later as a `migrate deploy` permissions error that never mentions shadow databases.
+
+Then put that user's existing credentials in `.env` as `DATABASE_URL`, URL-encoded.
+
+One consequence of sharing a credential, worth stating once: its blast radius now includes this warehouse's stock
+data, and rotating it affects every project that uses it. A reasonable trade for one fewer secret — but a trade.
 
 ---
 
