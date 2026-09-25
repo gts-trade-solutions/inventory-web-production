@@ -98,9 +98,14 @@ truncates the host and produces a connection error that blames the wrong thing.
 ```sh
 npm ci
 npm run db:deploy        # prisma migrate deploy — applies pending migrations, creates nothing new
+npm run db:migrate:demo  # the demo database has its own migration run; db:deploy only reads DATABASE_URL
 npm run build
-npm start                # listens on 3000 unless PORT says otherwise; reverse proxy in front for TLS
+npm start                # listens on 3012; put a reverse proxy in front for TLS
 ```
+
+Plain `npm ci`, not `--omit=dev`, and `NODE_ENV` must not be `production` in that shell. `prisma`, `tsx`,
+`typescript` and `dotenv` are devDependencies: pruning them breaks the build immediately and — more quietly — the
+nightly sweep and the backups, which need `tsx` and `dotenv` every time they run. Do not prune after building.
 
 `db:deploy`, not `db:migrate`. `migrate dev` is a development command: it will offer to reset the database when
 it finds history it does not like, and on a production database that offer should never be on the table.
@@ -113,23 +118,40 @@ does not know about is harmless, a missing one is not.
 Three files in the repository cover this stack. Each carries its reasoning in comments; the placeholders to
 replace are marked `CHANGE ME` or named in the header.
 
-| File                                        | Install with                                      |
-| ------------------------------------------- | ------------------------------------------------- |
-| [`ecosystem.config.cjs`](../ecosystem.config.cjs) | `pm2 start ecosystem.config.cjs && pm2 save`  |
-| [`deploy/nginx.conf`](../deploy/nginx.conf) | copy to `/etc/nginx/sites-available/inventory`    |
-| [`deploy/crontab`](../deploy/crontab)       | `crontab -u inventory deploy/crontab`             |
+| File                                              | Install with                                   |
+| ------------------------------------------------- | ---------------------------------------------- |
+| [`deploy/nginx.conf`](../deploy/nginx.conf)       | copy to `/etc/nginx/sites-available/inventory` |
+| [`deploy/crontab`](../deploy/crontab)             | `crontab -u inventory deploy/crontab`          |
+| [`ecosystem.config.cjs`](../ecosystem.config.cjs) | `pm2 start ecosystem.config.cjs && pm2 save`   |
 
-**The port is 3012, declared in two places that must agree**: `PORT` at the top of `ecosystem.config.cjs`, and the
-`upstream` block in `deploy/nginx.conf`. Not 3000, which is already taken on this server. If they disagree every
-request is a 502 and `/var/log/nginx/inventory.error.log` says `connect() failed (111: Connection refused)`.
+**The port is 3012, declared in two places that must agree**: the `start` script in `package.json`
+(`next start -p 3012`), and the `upstream` block in `deploy/nginx.conf`. Not 3000, which is already taken on this
+server. If they disagree every request is a 502 and `/var/log/nginx/inventory.error.log` says
+`connect() failed (111: Connection refused)`.
 
-Three further things in them are not stylistic preferences:
+`ecosystem.config.cjs` deliberately does **not** set `PORT`, and runs `npm start` rather than Next's binary, so
+that the port cannot be defined twice and drift.
 
-**One instance, fork mode.** The SSE event bus (`lib/events/bus.ts`) and the rate limiter
-(`lib/api/rate-limit.ts`) both keep state in-process on `globalThis`. Under `pm2 -i max`, an event recorded by
-one worker never reaches a console held open by another — nothing errors, the screen simply stops updating — and
-the 10/minute per-account sign-in limit becomes 10 per worker. Both are stated single-instance assumptions.
-Going wider means moving both to Redis first.
+### Starting it under pm2 without the ecosystem file
+
+```sh
+pm2 start npm --name inventory -- start
+pm2 save
+pm2 startup                # prints a systemd command; run it once so this survives reboot
+```
+
+**Do not add `-i max` or `-i <n>` to that, and do not use `pm2 start npm -i 4`.** The SSE event bus
+(`lib/events/bus.ts`) and the rate limiter (`lib/api/rate-limit.ts`) both keep state in-process on `globalThis`:
+
+- Under cluster mode, an event recorded by one worker never reaches a device console held open by another. Nothing
+  errors — the screen simply stops updating, which reads as "no activity in the warehouse" rather than as a fault.
+- The 10/minute per-account sign-in limit becomes 10 per worker, so the limit that actually stops password
+  guessing silently loosens by however many workers there are.
+
+Both are stated single-instance assumptions, not oversights. Going wider means moving both to Redis first — real
+work, not a flag. Started the way above, pm2 defaults to fork mode with one instance, which is correct.
+
+Two further things in the config files are not stylistic preferences:
 
 **`proxy_buffering off` on `/api/v1/stream`.** Otherwise nginx holds the event stream waiting for a body that
 never ends, and the device console shows nothing while reporting no error. §8 lists the symptom because it has

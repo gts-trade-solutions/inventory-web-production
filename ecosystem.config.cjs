@@ -29,14 +29,16 @@
  */
 
 /**
- * The port. Change it here and in deploy/nginx.conf's `upstream` block — those
- * are the only two places, and they must agree or nginx proxies to nothing and
- * every request is a 502.
+ * THE PORT IS NOT SET HERE. It lives in package.json's `start` script
+ * (`next start -p 3012`), and must match the `upstream` block in
+ * deploy/nginx.conf. Two places, not three.
  *
- * Not 3000: something else on this box already has it. Nothing about the app
- * depends on the number, only that nginx points at the same one.
+ * This file runs `npm start` rather than Next's binary directly so that the port
+ * has exactly one definition. The cost is that npm sits between pm2 and the
+ * server as an extra process and forwards signals imperfectly; `kill_timeout`
+ * below covers that, and pm2 kills the process tree. A port defined in two
+ * places that can silently disagree is the worse trade.
  */
-const PORT = 3012
 
 module.exports = {
   apps: [
@@ -46,13 +48,8 @@ module.exports = {
       // CHANGE ME: wherever you cloned the repo on the VPS.
       cwd: '/srv/inventory',
 
-      /**
-       * Next's own binary rather than `npm start`. npm sits between pm2 and the
-       * server as an extra process, and it forwards signals imperfectly — a
-       * reload can leave the old server holding the port while pm2 believes it
-       * stopped.
-       */
-      script: 'node_modules/next/dist/bin/next',
+      // `npm start`, so the port has one definition. See the header.
+      script: 'npm',
       args: 'start',
 
       exec_mode: 'fork', // see the note above
@@ -60,8 +57,8 @@ module.exports = {
 
       env: {
         NODE_ENV: 'production',
-        // `next start` reads PORT. Declared once, at the top of this file.
-        PORT,
+        // No PORT here on purpose: package.json's start script passes -p, and a
+        // PORT set here would be a second definition free to drift from it.
       },
 
       /**
