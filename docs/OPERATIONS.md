@@ -99,7 +99,7 @@ truncates the host and produces a connection error that blames the wrong thing.
 npm ci
 npm run db:deploy        # prisma migrate deploy — applies pending migrations, creates nothing new
 npm run build
-npm start                # listens on 3000; put a reverse proxy in front for TLS
+npm start                # listens on 3000 unless PORT says otherwise; reverse proxy in front for TLS
 ```
 
 `db:deploy`, not `db:migrate`. `migrate dev` is a development command: it will offer to reset the database when
@@ -119,7 +119,11 @@ replace are marked `CHANGE ME` or named in the header.
 | [`deploy/nginx.conf`](../deploy/nginx.conf) | copy to `/etc/nginx/sites-available/inventory`    |
 | [`deploy/crontab`](../deploy/crontab)       | `crontab -u inventory deploy/crontab`             |
 
-Three things in them are not stylistic preferences:
+**The port is 3012, declared in two places that must agree**: `PORT` at the top of `ecosystem.config.cjs`, and the
+`upstream` block in `deploy/nginx.conf`. Not 3000, which is already taken on this server. If they disagree every
+request is a 502 and `/var/log/nginx/inventory.error.log` says `connect() failed (111: Connection refused)`.
+
+Three further things in them are not stylistic preferences:
 
 **One instance, fork mode.** The SSE event bus (`lib/events/bus.ts`) and the rate limiter
 (`lib/api/rate-limit.ts`) both keep state in-process on `globalThis`. Under `pm2 -i max`, an event recorded by

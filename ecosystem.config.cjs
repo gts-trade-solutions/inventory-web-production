@@ -28,6 +28,16 @@
  * config change. Until then this file is the enforcement.
  */
 
+/**
+ * The port. Change it here and in deploy/nginx.conf's `upstream` block — those
+ * are the only two places, and they must agree or nginx proxies to nothing and
+ * every request is a 502.
+ *
+ * Not 3000: something else on this box already has it. Nothing about the app
+ * depends on the number, only that nginx points at the same one.
+ */
+const PORT = 3012
+
 module.exports = {
   apps: [
     {
@@ -39,7 +49,7 @@ module.exports = {
       /**
        * Next's own binary rather than `npm start`. npm sits between pm2 and the
        * server as an extra process, and it forwards signals imperfectly — a
-       * reload can leave the old server holding port 3000 while pm2 believes it
+       * reload can leave the old server holding the port while pm2 believes it
        * stopped.
        */
       script: 'node_modules/next/dist/bin/next',
@@ -50,7 +60,8 @@ module.exports = {
 
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        // `next start` reads PORT. Declared once, at the top of this file.
+        PORT,
       },
 
       /**
