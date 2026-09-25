@@ -30,7 +30,7 @@
 
 /**
  * THE PORT IS NOT SET HERE. It lives in package.json's `start` script
- * (`next start -p 3012`), and must match the `upstream` block in
+ * (`next start -p 3013`), and must match the `upstream` block in
  * deploy/nginx.conf. Two places, not three.
  *
  * This file runs `npm start` rather than Next's binary directly so that the port

@@ -100,7 +100,7 @@ npm ci
 npm run db:deploy        # prisma migrate deploy — applies pending migrations, creates nothing new
 npm run db:migrate:demo  # the demo database has its own migration run; db:deploy only reads DATABASE_URL
 npm run build
-npm start                # listens on 3012; put a reverse proxy in front for TLS
+npm start                # listens on 3013; put a reverse proxy in front for TLS
 ```
 
 Plain `npm ci`, not `--omit=dev`, and `NODE_ENV` must not be `production` in that shell. `prisma`, `tsx`,
@@ -124,8 +124,8 @@ replace are marked `CHANGE ME` or named in the header.
 | [`deploy/crontab`](../deploy/crontab)             | `crontab -u inventory deploy/crontab`          |
 | [`ecosystem.config.cjs`](../ecosystem.config.cjs) | `pm2 start ecosystem.config.cjs && pm2 save`   |
 
-**The port is 3012, declared in two places that must agree**: the `start` script in `package.json`
-(`next start -p 3012`), and the `upstream` block in `deploy/nginx.conf`. Not 3000, which is already taken on this
+**The port is 3013, declared in two places that must agree**: the `start` script in `package.json`
+(`next start -p 3013`), and the `upstream` block in `deploy/nginx.conf`. Not 3000, which is already taken on this
 server. If they disagree every request is a 502 and `/var/log/nginx/inventory.error.log` says
 `connect() failed (111: Connection refused)`.
 
